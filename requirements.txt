@@ -2,3 +2,5 @@ groq
 google-genai
 deepgram-sdk
 python-dotenv
+psycopg2-binary
+python-dateutil

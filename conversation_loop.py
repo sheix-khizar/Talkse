@@ -2,10 +2,13 @@ import os
 import sys
 import time
 import json
+import uuid
 from dotenv import load_dotenv
 
-# Import functions directly from poc.py as instructed (no new abstraction package)
+# Import functions from poc.py and booking_engine as instructed
 from poc import transcribe, extract_intent, synthesize, merge_state
+import booking_engine as be
+import db
 
 def next_missing_field(state: dict) -> str | None:
     """Returns the name of the first missing required field for state['intent'], or None if complete."""
@@ -88,8 +91,10 @@ def safe_synthesize_with_retry(text: str, out_path: str) -> float:
 def run_conversation(audio_files: list[str]) -> dict:
     """Runs a multi-turn conversation loop using an array of turn audio files."""
     load_dotenv()
+    db.init_db()
     
     os.makedirs("turns", exist_ok=True)
+    idempotency_key = f"conv_{int(time.time())}_{uuid.uuid4().hex[:6]}"
     
     state = {
         "intent": None,
@@ -99,11 +104,14 @@ def run_conversation(audio_files: list[str]) -> dict:
         "existing_appointment_ref": None,
         "turn_count": 0,
         "status": "collecting",
+        "idempotency_key": idempotency_key,
+        "booking_result": None
     }
     
     print("\n" + "="*60)
-    print("      TALKSE STEP 2 — MULTI-TURN CONVERSATION LOOP      ")
+    print("      TALKSE STEP 3 — BOOKING ENGINE & POSTGRES PIPELINE      ")
     print("="*60)
+    print(f"Conversation Idempotency Key: {idempotency_key}")
     
     opening_text = prompt_for_field("intent")
     print(f"Assistant Opening Prompt: '{opening_text}'")
@@ -133,10 +141,29 @@ def run_conversation(audio_files: list[str]) -> dict:
             print("[Error] STT failed permanently. [WOULD TRANSFER TO HUMAN]")
             state["status"] = "transferred_to_human"
             break
+
+        # EMERGENCY OVERRIDE CHECK (Task 5: must run first before booking logic)
+        emergency_msg = be.check_emergency_protocol(transcript)
+        if emergency_msg:
+            print(f"\n[EMERGENCY OVERRIDE TRIGGERED] {emergency_msg}")
+            safe_synthesize_with_retry(emergency_msg, "turns/reply_emergency.wav")
+            state["status"] = "emergency_transferred"
+            print("[WOULD TRANSFER TO HUMAN - EMERGENCY OVERRIDE]")
+            break
             
         # 2. Extract intent
         extracted, llm_time = safe_extract_intent_with_retry(transcript)
         
+        # Check transcript/extracted for contraindications
+        svc_candidate = be.config.get_service(state.get("service") or extracted.get("service") or "")
+        contra_reason = be.check_contraindications(svc_candidate, transcript)
+        if contra_reason:
+            print(f"\n[CONTRAINDICATION DETECTED] {contra_reason}")
+            safe_synthesize_with_retry(contra_reason, f"turns/reply_turn_{turn_num}_contra.wav")
+            state["status"] = "flagged_human_review"
+            print("[WOULD TRANSFER TO HUMAN - CONTRAINDICATION REVIEW]")
+            break
+
         # 3. Merge into state
         merge_state(state, extracted)
         
@@ -146,7 +173,7 @@ def run_conversation(audio_files: list[str]) -> dict:
         else:
             unclear_turns_count = 0
             
-        print(f"Updated Running State (Turn {turn_num}): {json.dumps(state, indent=2)}")
+        print(f"Updated Running State (Turn {turn_num}): {json.dumps(state, indent=2, default=str)}")
         
         # Unclear intent after 2 turns check
         if unclear_turns_count >= 2:
@@ -167,21 +194,46 @@ def run_conversation(audio_files: list[str]) -> dict:
             print(f"Assistant Follow-up Prompt: '{reply_text}'")
             tts_time = safe_synthesize_with_retry(reply_text, f"turns/reply_turn_{turn_num}.wav")
         else:
-            # All fields collected -> Confirmation turn
-            state["status"] = "confirming"
+            # All fields collected -> Execute Real Booking Engine Logic
+            state["status"] = "executing"
             intent = state["intent"]
+            print(f"\n[Executing Booking Engine Action for intent: '{intent}']")
+            
             if intent == "book":
-                confirm_text = f"Got it! We have a {state['service']} appointment for {state['caller_name']} on {state['preferred_time']}. Is that correct?"
+                result = be.book_appointment(state, idempotency_key)
+                state["booking_result"] = result
+                if result["status"] == "confirmed":
+                    reply_text = result["message"]
+                    state["status"] = "done"
+                else:
+                    reply_text = f"I couldn't complete that booking: {result['reason']}"
+                    state["status"] = "rejected"
+                    
             elif intent == "reschedule":
-                confirm_text = f"Got it! Rescheduling appointment {state['existing_appointment_ref']} to {state['preferred_time']}. Is that correct?"
+                result = be.reschedule_appointment(state["existing_appointment_ref"], state["preferred_time"])
+                state["booking_result"] = result
+                if result["status"] == "rescheduled":
+                    reply_text = result["message"]
+                    state["status"] = "done"
+                else:
+                    reply_text = f"I couldn't reschedule that appointment: {result['reason']}"
+                    state["status"] = "rejected"
+                    
             elif intent == "cancel":
-                confirm_text = f"Got it! Cancelling appointment {state['existing_appointment_ref']}. Is that correct?"
+                result = be.cancel_appointment(state["existing_appointment_ref"])
+                state["booking_result"] = result
+                if result["status"] == "cancelled":
+                    reply_text = result["message"]
+                    state["status"] = "done"
+                else:
+                    reply_text = f"I couldn't cancel that appointment: {result['reason']}"
+                    state["status"] = "rejected"
             else:
-                confirm_text = "Got it! All details collected. Is that correct?"
+                reply_text = "Action could not be determined."
+                state["status"] = "rejected"
                 
-            print(f"Assistant Final Confirmation Summary: '{confirm_text}'")
-            tts_time = safe_synthesize_with_retry(confirm_text, f"turns/reply_confirmation.wav")
-            state["status"] = "done"
+            print(f"Assistant Final Result Reply: '{reply_text}'")
+            tts_time = safe_synthesize_with_retry(reply_text, f"turns/reply_result.wav")
             
         turn_elapsed = time.perf_counter() - turn_start
         
@@ -194,7 +246,7 @@ def run_conversation(audio_files: list[str]) -> dict:
             "exceeded_threshold": turn_elapsed > 4.0
         })
         
-        if state["status"] in ("done", "transferred_to_human"):
+        if state["status"] in ("done", "rejected", "transferred_to_human", "emergency_transferred", "flagged_human_review"):
             break
             
         if turn_num >= max_turns and state["status"] != "done":
@@ -207,18 +259,16 @@ def run_conversation(audio_files: list[str]) -> dict:
 
     # Final Output Summary
     print("\n" + "="*60)
-    print("           TALKSE STEP 2 CONVERSATION SUMMARY           ")
+    print("           TALKSE STEP 3 CONVERSATION SUMMARY           ")
     print("="*60)
-    print(f"Final State Dict:\n{json.dumps(state, indent=2)}\n")
+    print(f"Final State Dict:\n{json.dumps(state, indent=2, default=str)}\n")
     
-    if state["status"] == "done":
-        intent = state["intent"]
-        if intent == "book":
-            print(f"[WOULD BOOK] Service: '{state['service']}', Time: '{state['preferred_time']}', Name: '{state['caller_name']}'")
-        elif intent == "reschedule":
-            print(f"[WOULD RESCHEDULE] Ref: '{state['existing_appointment_ref']}', New Time: '{state['preferred_time']}'")
-        elif intent == "cancel":
-            print(f"[WOULD CANCEL] Ref: '{state['existing_appointment_ref']}'")
+    if state.get("booking_result"):
+        print(f"POSTGRES DB ACTION RESULT:\n{json.dumps(state['booking_result'], indent=2, default=str)}\n")
+    elif state["status"] == "emergency_transferred":
+        print("[EMERGENCY OVERRIDE - CALL 911 INSTRUCTED]")
+    elif state["status"] == "flagged_human_review":
+        print("[CONTRAINDICATION DETECTED - FLAGGED FOR PROVIDER REVIEW]")
     else:
         print("[WOULD TRANSFER TO HUMAN]")
         
@@ -240,5 +290,5 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         files = sys.argv[1:]
     else:
-        files = ["sample_input.wav"]
+        files = ["turns/book_t1.wav", "turns/book_t2.wav", "turns/book_t3.wav"]
     run_conversation(files)
