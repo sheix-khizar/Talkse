@@ -4,7 +4,7 @@ Multi-tenant Voice AI receptionist for US aesthetic clinics (medspas, botox/lase
 
 > **Architecture note:** This platform previously targeted self-hosted Ollama/Whisper/Piper on CPU. As of this revision it runs on managed AI APIs instead — see `Docs/ARCHITECTURE_DECISIONS.md` for the full reasoning and the cost-based trigger for revisiting self-hosting at higher call volume.
 
-> **Primary product: the Voice AI.** The Admin Dashboard exists only to support it. If a change doesn't improve the Voice AI's reliability or the caller experience, question whether it belongs in this release.
+> **Primary Product: the Voice AI.** The Admin Dashboard exists only to support it. If a change doesn't improve the Voice AI's reliability or the caller experience, question whether it belongs in this release.
 
 ---
 
