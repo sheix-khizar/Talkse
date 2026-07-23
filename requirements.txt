@@ -1,0 +1,4 @@
+groq
+google-genai
+deepgram-sdk
+python-dotenv
