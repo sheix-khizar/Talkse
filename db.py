@@ -36,6 +36,11 @@ def init_db():
                 );
             """)
             
+            # Known Limitation / Future Schema Enhancement:
+            # uq_provider_slot prevents two confirmed bookings at the exact same scheduled_start for a provider.
+            # Intersecting/overlapping time windows (e.g. 2:00-2:30 vs 2:15-2:45) are caught by get_overlapping_appointments()
+            # in application logic. A strict DB-level exclusion constraint for overlapping time ranges would require
+            # CREATE EXTENSION btree_gist; EXCLUDE USING gist (provider_id WITH =, tsrange(scheduled_start, scheduled_end) WITH &&).
             cur.execute("""
                 CREATE UNIQUE INDEX IF NOT EXISTS uq_provider_slot
                     ON appointments (provider_id, scheduled_start)

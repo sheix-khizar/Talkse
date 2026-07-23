@@ -29,15 +29,21 @@ def get_service(service_id_or_name: str) -> dict | None:
         if query in svc["name"].lower() or svc["name"].lower() in query:
             return svc
 
-    # 3. Keyword matching (e.g. 'botox', 'hydrafacial', 'consultation', 'filler')
+    # 3. Match against service category
+    for svc in SERVICES:
+        cat = svc.get("category", "").lower()
+        if cat and (query == cat or query in cat):
+            return svc
+
+    # 4. Keyword map with real valid IDs
     keywords = {
         "botox": "svc_botox_touchup",
         "consultation": "svc_consult",
         "consult": "svc_consult",
-        "filler": "svc_filler_juvederm",
-        "hydrafacial": "svc_hydrafacial_deluxe",
-        "laser": "svc_laser_hair_small",
-        "peel": "svc_chem_peel_medium"
+        "filler": "svc_filler_lips",
+        "hydrafacial": "svc_hydrafacial",
+        "laser": "svc_laser_small",
+        "peel": "svc_peel"
     }
     for kw, default_id in keywords.items():
         if kw in query:

@@ -184,7 +184,7 @@ def main():
     extracted, llm_time = extract_intent(transcript)
     
     # Formulate confirmation reply string based on extracted intent
-    if extracted.get("intent") == "book_appointment":
+    if extracted.get("intent") in ("book", "book_appointment"):
         service = extracted.get("service") or "an appointment"
         caller = extracted.get("caller_name") or "there"
         time_pref = extracted.get("preferred_time") or "your requested time"
