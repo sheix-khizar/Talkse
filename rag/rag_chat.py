@@ -10,7 +10,15 @@ from rag.retriever import retrieve
 
 load_dotenv()
 
-def answer_question(question: str) -> dict:
+_gemini_client = None
+
+def get_client(api_key: str):
+    global _gemini_client
+    if _gemini_client is None:
+        _gemini_client = genai.Client(api_key=api_key)
+    return _gemini_client
+
+def answer_question_streaming(question: str):
     api_key = os.getenv("GEMINI_API_KEY")
     results = retrieve(question, api_key, top_k=2)
 
@@ -32,8 +40,8 @@ def answer_question(question: str) -> dict:
         "6. Do not use markdown, bullet points, or numbered lists — this is spoken audio."
     )
 
-    client = genai.Client(api_key=api_key)
-    response = client.models.generate_content(
+    client = get_client(api_key)
+    response_stream = client.models.generate_content_stream(
         model="gemini-flash-lite-latest",
         contents=f"Context:\n{context_block}\n\nQuestion: {question}",
         config={
@@ -44,15 +52,21 @@ def answer_question(question: str) -> dict:
     )
 
     sources = list({(r["title"], r["url"]) for r in results})  # dedupe
-
-    return {
-        "answer": response.text,
-        "sources": [{"title": t, "url": u} for t, u in sources]
-    }
+    yield [{"title": s[0], "url": s[1]} for s in sources]
+    
+    buffer = ""
+    for chunk in response_stream:
+        buffer += chunk.text
+        # Naive sentence split by punctuation. A real one might be more robust.
+        if buffer.strip().endswith((".", "?", "!")):
+            yield buffer.strip()
+            buffer = ""
+    if buffer.strip():
+        yield buffer.strip()
 
 if __name__ == "__main__":
-    result = answer_question("What is Botox?")
-    print(result["answer"])
-    print("\nSources:")
-    for s in result["sources"]:
-        print(f"  ✓ {s['title']} — {s['url']}")
+    stream_gen = answer_question_streaming("What is Botox?")
+    first_yield = next(stream_gen)
+    print("Sources:", [s["url"] for s in first_yield])
+    for chunk in stream_gen:
+        print("Answer Chunk:", chunk)

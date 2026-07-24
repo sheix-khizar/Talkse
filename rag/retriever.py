@@ -23,4 +23,4 @@ def retrieve(query: str, api_key: str, top_k: int = 5) -> list[dict]:
             rows = cur.fetchall()
             return [{"chunk": r[0], "title": r[1], "url": r[2], "score": r[3]} for r in rows]
     finally:
-        conn.close()
+        db.release_connection(conn)

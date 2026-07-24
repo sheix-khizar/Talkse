@@ -1,5 +1,6 @@
 import os
 import psycopg2
+from psycopg2 import pool
 from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
 
@@ -8,8 +9,19 @@ load_dotenv()
 DEFAULT_DB_URL = "postgresql://postgres:postgres@localhost:5433/postgres"
 DATABASE_URL = os.getenv("DATABASE_URL", DEFAULT_DB_URL)
 
+_pool = None
+def get_pool():
+    global _pool
+    if _pool is None:
+        _pool = pool.SimpleConnectionPool(1, 10, DATABASE_URL)
+    return _pool
+
 def get_connection():
-    return psycopg2.connect(DATABASE_URL)
+    return get_pool().getconn()
+
+def release_connection(conn):
+    if conn:
+        get_pool().putconn(conn)
 
 def init_db():
     """Initializes the appointments table and unique slot index in Postgres."""
@@ -49,7 +61,7 @@ def init_db():
             conn.commit()
             print("[DB] Initialized appointments table and unique index successfully.")
     finally:
-        conn.close()
+        release_connection(conn)
 
 def get_appointment(id_or_key: str) -> dict | None:
     """Fetches an appointment by ID or idempotency_key."""
@@ -63,7 +75,7 @@ def get_appointment(id_or_key: str) -> dict | None:
             row = cur.fetchone()
             return dict(row) if row else None
     finally:
-        conn.close()
+        release_connection(conn)
 
 def get_overlapping_appointments(provider_id: str, start_dt, end_dt, exclude_id: str = None) -> list[dict]:
     """Finds confirmed appointments overlapping [start_dt, end_dt) for a provider."""
@@ -87,7 +99,7 @@ def get_overlapping_appointments(provider_id: str, start_dt, end_dt, exclude_id:
                 """, (provider_id, end_dt, start_dt))
             return [dict(r) for r in cur.fetchall()]
     finally:
-        conn.close()
+        release_connection(conn)
 
 def insert_appointment(idempotency_key: str, service_id: str, provider_id: str, caller_name: str, scheduled_start, scheduled_end, deposit_required: bool = False, caller_phone: str = None) -> dict:
     """Inserts a new appointment row or returns existing row if idempotency_key exists."""
@@ -108,7 +120,7 @@ def insert_appointment(idempotency_key: str, service_id: str, provider_id: str, 
             conn.commit()
             return dict(row)
     finally:
-        conn.close()
+        release_connection(conn)
 
 def cancel_appointment(id_or_key: str) -> dict | None:
     """Marks an appointment status as cancelled."""
@@ -125,7 +137,7 @@ def cancel_appointment(id_or_key: str) -> dict | None:
             conn.commit()
             return dict(row) if row else None
     finally:
-        conn.close()
+        release_connection(conn)
 
 def update_appointment_time(id_or_key: str, new_start, new_end) -> dict | None:
     """Updates scheduled start and end time of an appointment."""
@@ -142,7 +154,7 @@ def update_appointment_time(id_or_key: str, new_start, new_end) -> dict | None:
             conn.commit()
             return dict(row) if row else None
     finally:
-        conn.close()
+        release_connection(conn)
 
 if __name__ == "__main__":
     init_db()
@@ -178,7 +190,7 @@ def init_rag_tables():
             conn.commit()
             print("[DB] RAG tables ready.")
     finally:
-        conn.close()
+        release_connection(conn)
 
 def upsert_document(source_url: str, category: str, title: str, content_hash: str) -> str:
     conn = get_connection()
@@ -202,7 +214,7 @@ def upsert_document(source_url: str, category: str, title: str, content_hash: st
             conn.commit()
             return str(new_id)
     finally:
-        conn.close()
+        release_connection(conn)
 
 def insert_chunk(document_id: str, chunk_text: str, embedding: list[float]):
     conn = get_connection()
@@ -214,4 +226,4 @@ def insert_chunk(document_id: str, chunk_text: str, embedding: list[float]):
             """, (document_id, chunk_text, embedding))
             conn.commit()
     finally:
-        conn.close()
+        release_connection(conn)

@@ -8,26 +8,48 @@ from google import genai
 from google.genai import types
 from deepgram import DeepgramClient
 
+_groq_client = None
+_gemini_client = None
+
+def get_groq_client():
+    global _groq_client
+    if _groq_client is None:
+        groq_key = os.getenv("GROQ_API_KEY")
+        if not groq_key:
+            raise ValueError("GROQ_API_KEY missing in environment variables.")
+        _groq_client = Groq(api_key=groq_key)
+    return _groq_client
+
+def get_gemini_client():
+    global _gemini_client
+    if _gemini_client is None:
+        gemini_key = os.getenv("GEMINI_API_KEY")
+        if not gemini_key:
+            raise ValueError("GEMINI_API_KEY missing in environment variables.")
+        _gemini_client = genai.Client(api_key=gemini_key)
+    return _gemini_client
+
 def transcribe(audio_path: str) -> tuple[str, float]:
     """Transcribes an audio file using Groq's whisper-large-v3-turbo model."""
     start_time = time.perf_counter()
-    api_key = os.getenv("GROQ_API_KEY")
-    if not api_key:
-        raise ValueError("GROQ_API_KEY missing in environment variables.")
     
-    client = Groq(api_key=api_key)
-    with open(audio_path, "rb") as file:
-        transcription = client.audio.transcriptions.create(
-            file=(os.path.basename(audio_path), file.read()),
-            model="whisper-large-v3-turbo",
-            response_format="json"
-        )
-    
-    transcript = transcription.text if hasattr(transcription, "text") else str(transcription)
-    elapsed = time.perf_counter() - start_time
-    print(f"[STT Stage] Groq Whisper completed in {elapsed:.3f}s")
-    print(f"Transcript: '{transcript}'\n")
-    return transcript, elapsed
+    try:
+        client = get_groq_client()
+        with open(audio_path, "rb") as file:
+            transcription = client.audio.transcriptions.create(
+                file=(os.path.basename(audio_path), file.read()),
+                model="whisper-large-v3-turbo",
+                response_format="json"
+            )
+        
+        transcript = transcription.text if hasattr(transcription, "text") else str(transcription)
+        elapsed = time.perf_counter() - start_time
+        print(f"[STT Stage] Groq Whisper completed in {elapsed:.3f}s")
+        print(f"Transcript: '{transcript}'\n")
+        return transcript, elapsed
+    except Exception as e:
+        print(f"[STT Error] Groq Whisper failed: {e}")
+        return "", 0.0
 
 def merge_state(current_state: dict, new_extracted: dict) -> dict:
     """Merges new extracted fields into current state without overwriting non-null values with nulls."""
@@ -48,11 +70,6 @@ def merge_state(current_state: dict, new_extracted: dict) -> dict:
 def extract_intent(transcript: str) -> tuple[dict, float]:
     """Extracts structured intent from transcript using Gemini/Groq LLM."""
     start_time = time.perf_counter()
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise ValueError("GEMINI_API_KEY missing in environment variables.")
-    
-    client = genai.Client(api_key=api_key)
     
     system_prompt = (
         "You are an AI receptionist extracting structured conversation details from a transcript.\n"
@@ -84,10 +101,7 @@ def extract_intent(transcript: str) -> tuple[dict, float]:
 
     model_name = "groq/llama-3.3-70b-versatile"
     try:
-        groq_key = os.getenv("GROQ_API_KEY")
-        if not groq_key:
-            raise ValueError("GROQ_API_KEY missing in environment variables.")
-        groq_client = Groq(api_key=groq_key)
+        groq_client = get_groq_client()
         groq_res = groq_client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[
@@ -102,6 +116,7 @@ def extract_intent(transcript: str) -> tuple[dict, float]:
         print(f"[LLM Stage Warning] Groq LLM ({model_name}) failed: {e}. Falling back to Gemini 2.0 Flash...")
         try:
             model_name = "gemini-flash-lite-latest"
+            client = get_gemini_client()
             response = client.models.generate_content(
                 model=model_name,
                 contents=transcript,

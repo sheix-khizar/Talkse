@@ -10,7 +10,7 @@ from poc import transcribe, extract_intent, synthesize, merge_state
 import booking_engine as be
 import db
 import audio_playback as ap
-from rag.rag_chat import answer_question
+from rag.rag_chat import answer_question_streaming
 
 try:
     import mic_input as mic
@@ -195,18 +195,29 @@ def run_conversation(audio_files: list[str]) -> dict:
             continue
         
         if state["intent"] == "faq":
-            result = answer_question(transcript)
-            reply_text = result["answer"]
-            print("Sources:", [s["url"] for s in result["sources"]])
-            tts_time = safe_synthesize_with_retry(reply_text, f"turns/reply_turn_{turn_num}.wav")
+            stream_gen = answer_question_streaming(transcript)
+            first_yield = next(stream_gen)
+            print("Sources:", [s["url"] for s in first_yield])
+            
+            # Start streaming each sentence
+            total_tts_time_acc = 0.0
+            ttft = 0.0
+            
+            for chunk_idx, sentence in enumerate(stream_gen):
+                chunk_tts = safe_synthesize_with_retry(sentence, f"turns/reply_turn_{turn_num}_chunk_{chunk_idx}.wav")
+                if chunk_idx == 0:
+                    ttft = chunk_tts
+                total_tts_time_acc += chunk_tts
+                
             turn_elapsed = time.perf_counter() - turn_start
             latency_log.append({
                 "turn": turn_num,
                 "stt_time": stt_time,
                 "llm_time": llm_time,
-                "tts_time": tts_time,
+                "ttft": ttft,
+                "tts_time": total_tts_time_acc,
                 "total_turn_time": turn_elapsed,
-                "exceeded_threshold": turn_elapsed > 4.0
+                "exceeded_threshold": (stt_time + llm_time + ttft) > 4.0
             })
             continue
         
@@ -428,17 +439,27 @@ def run_conversation_live(max_turns: int = 6) -> dict:
             continue
         
         if state["intent"] == "faq":
-            result = answer_question(transcript)
-            reply_text = result["answer"]
-            print("Sources:", [s["url"] for s in result["sources"]])
-            ttft, tts_time = ap.stream_and_play_tts_safe(reply_text, f"turns/reply_turn_{turn_num}.wav")
+            stream_gen = answer_question_streaming(transcript)
+            first_yield = next(stream_gen)
+            print("Sources:", [s["url"] for s in first_yield])
+            
+            # Start streaming each sentence
+            total_tts_time_acc = 0.0
+            ttft = 0.0
+            
+            for chunk_idx, sentence in enumerate(stream_gen):
+                chunk_ttft, chunk_tts = ap.stream_and_play_tts_safe(sentence, f"turns/reply_turn_{turn_num}_chunk_{chunk_idx}.wav")
+                if chunk_idx == 0:
+                    ttft = chunk_ttft
+                total_tts_time_acc += chunk_tts
+
             turn_elapsed = time.perf_counter() - turn_start
             latency_log.append({
                 "turn": turn_num,
                 "stt_time": stt_time,
                 "llm_time": llm_time,
                 "ttft": ttft,
-                "tts_time": tts_time,
+                "tts_time": total_tts_time_acc,
                 "total_turn_time": turn_elapsed,
                 "exceeded_threshold": (stt_time + llm_time + ttft) > 4.0
             })
