@@ -35,7 +35,7 @@ def merge_state(current_state: dict, new_extracted: dict) -> dict:
     if new_intent == "book_appointment":
         new_intent = "book"
 
-    if new_intent in ("book", "reschedule", "cancel") and current_state.get("intent") in (None, "unclear"):
+    if new_intent in ("book", "reschedule", "cancel", "faq", "service_check") and current_state.get("intent") in (None, "unclear"):
         current_state["intent"] = new_intent
 
     for field in ("service", "preferred_time", "caller_name", "existing_appointment_ref"):
@@ -58,7 +58,7 @@ def extract_intent(transcript: str) -> tuple[dict, float]:
         "You are an AI receptionist extracting structured conversation details from a transcript.\n"
         "Return ONLY a JSON object matching this exact schema with no extra text or markdown formatting:\n"
         "{\n"
-        '  "intent": "book" | "reschedule" | "cancel" | "unclear",\n'
+        '  "intent": "book" | "reschedule" | "cancel" | "service_check" | "faq" | "unclear",\n'
         '  "service": null,\n'
         '  "preferred_time": null,\n'
         '  "caller_name": null,\n'
@@ -66,7 +66,9 @@ def extract_intent(transcript: str) -> tuple[dict, float]:
         '  "confidence": 0.0\n'
         "}\n"
         "Rules:\n"
-        "- Set 'intent' to 'book', 'reschedule', 'cancel', or 'unclear'.\n"
+        "- Set 'intent' to 'book', 'reschedule', 'cancel', 'service_check', 'faq', or 'unclear'.\n"
+        "- 'service_check' = caller is asking whether you offer something, wants to move toward booking.\n"
+        "- 'faq' = caller wants general info (policies, recovery, pricing, hours) with no booking intent yet.\n"
         "- ONLY fill in fields the caller explicitly stated in this transcript turn.\n"
         "- Leave unstated fields as null (do NOT invent or guess values)."
     )
@@ -99,7 +101,7 @@ def extract_intent(transcript: str) -> tuple[dict, float]:
     except Exception as e:
         print(f"[LLM Stage Warning] Groq LLM ({model_name}) failed: {e}. Falling back to Gemini 2.0 Flash...")
         try:
-            model_name = "gemini-2.0-flash"
+            model_name = "gemini-flash-lite-latest"
             response = client.models.generate_content(
                 model=model_name,
                 contents=transcript,

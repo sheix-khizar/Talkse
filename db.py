@@ -146,3 +146,72 @@ def update_appointment_time(id_or_key: str, new_start, new_end) -> dict | None:
 
 if __name__ == "__main__":
     init_db()
+
+def init_rag_tables():
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS documents (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    source_url TEXT NOT NULL,
+                    category TEXT NOT NULL,
+                    title TEXT,
+                    content_hash TEXT,
+                    updated_at TIMESTAMPTZ DEFAULT now()
+                );
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS document_chunks (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+                    chunk_text TEXT NOT NULL,
+                    embedding VECTOR(768)
+                );
+            """)
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_chunks_embedding
+                ON document_chunks USING ivfflat (embedding vector_cosine_ops)
+                WITH (lists = 50);
+            """)
+            conn.commit()
+            print("[DB] RAG tables ready.")
+    finally:
+        conn.close()
+
+def upsert_document(source_url: str, category: str, title: str, content_hash: str) -> str:
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, content_hash FROM documents WHERE source_url = %s;", (source_url,))
+            row = cur.fetchone()
+            if row and row[1] == content_hash:
+                return str(row[0])  # unchanged, skip re-embedding
+            if row:
+                cur.execute("DELETE FROM document_chunks WHERE document_id = %s;", (row[0],))
+                cur.execute("UPDATE documents SET content_hash=%s, updated_at=now() WHERE id=%s;",
+                            (content_hash, row[0]))
+                conn.commit()
+                return str(row[0])
+            cur.execute("""
+                INSERT INTO documents (source_url, category, title, content_hash)
+                VALUES (%s, %s, %s, %s) RETURNING id;
+            """, (source_url, category, title, content_hash))
+            new_id = cur.fetchone()[0]
+            conn.commit()
+            return str(new_id)
+    finally:
+        conn.close()
+
+def insert_chunk(document_id: str, chunk_text: str, embedding: list[float]):
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO document_chunks (document_id, chunk_text, embedding)
+                VALUES (%s, %s, %s);
+            """, (document_id, chunk_text, embedding))
+            conn.commit()
+    finally:
+        conn.close()

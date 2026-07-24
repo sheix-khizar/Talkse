@@ -10,6 +10,7 @@ from poc import transcribe, extract_intent, synthesize, merge_state
 import booking_engine as be
 import db
 import audio_playback as ap
+from rag.rag_chat import answer_question
 
 try:
     import mic_input as mic
@@ -173,6 +174,42 @@ def run_conversation(audio_files: list[str]) -> dict:
         # 3. Merge into state
         merge_state(state, extracted)
         
+        if state["intent"] == "service_check":
+            matched = be.config.get_service(extracted.get("service") or transcript)
+            if matched:
+                reply_text = f"Yes, we offer {matched['name']}. What day works best for you?"
+                state["intent"] = "book"          # transition straight into booking
+                state["service"] = matched["id"]
+            else:
+                reply_text = "I don't believe we offer that specific treatment — would you like me to check with a provider, or are you interested in something similar?"
+            tts_time = safe_synthesize_with_retry(reply_text, f"turns/reply_turn_{turn_num}.wav")
+            turn_elapsed = time.perf_counter() - turn_start
+            latency_log.append({
+                "turn": turn_num,
+                "stt_time": stt_time,
+                "llm_time": llm_time,
+                "tts_time": tts_time,
+                "total_turn_time": turn_elapsed,
+                "exceeded_threshold": turn_elapsed > 4.0
+            })
+            continue
+        
+        if state["intent"] == "faq":
+            result = answer_question(transcript)
+            reply_text = result["answer"]
+            print("Sources:", [s["url"] for s in result["sources"]])
+            tts_time = safe_synthesize_with_retry(reply_text, f"turns/reply_turn_{turn_num}.wav")
+            turn_elapsed = time.perf_counter() - turn_start
+            latency_log.append({
+                "turn": turn_num,
+                "stt_time": stt_time,
+                "llm_time": llm_time,
+                "tts_time": tts_time,
+                "total_turn_time": turn_elapsed,
+                "exceeded_threshold": turn_elapsed > 4.0
+            })
+            continue
+        
         # Track unclear intents
         if state["intent"] is None or state["intent"] == "unclear":
             unclear_turns_count += 1
@@ -317,7 +354,7 @@ def run_conversation_live(max_turns: int = 6) -> dict:
     
     opening_text = prompt_for_field("intent")
     print(f"Assistant Opening Prompt: '{opening_text}'")
-    ap.stream_and_play_tts(opening_text, "turns/opening_prompt.wav")
+    ap.stream_and_play_tts_safe(opening_text, "turns/opening_prompt.wav")
     
     total_conversation_start = time.perf_counter()
     latency_log = []
@@ -347,7 +384,7 @@ def run_conversation_live(max_turns: int = 6) -> dict:
         emergency_msg = be.check_emergency_protocol(transcript)
         if emergency_msg:
             print(f"\n[EMERGENCY OVERRIDE TRIGGERED] {emergency_msg}")
-            ap.stream_and_play_tts(emergency_msg, "turns/reply_emergency.wav")
+            ap.stream_and_play_tts_safe(emergency_msg, "turns/reply_emergency.wav")
             state["status"] = "emergency_transferred"
             print("[WOULD TRANSFER TO HUMAN - EMERGENCY OVERRIDE]")
             break
@@ -360,13 +397,52 @@ def run_conversation_live(max_turns: int = 6) -> dict:
         contra_reason = be.check_contraindications(svc_candidate, transcript)
         if contra_reason:
             print(f"\n[CONTRAINDICATION DETECTED] {contra_reason}")
-            ap.stream_and_play_tts(contra_reason, f"turns/reply_turn_{turn_num}_contra.wav")
+            ap.stream_and_play_tts_safe(contra_reason, f"turns/reply_turn_{turn_num}_contra.wav")
             state["status"] = "flagged_human_review"
             print("[WOULD TRANSFER TO HUMAN - CONTRAINDICATION REVIEW]")
             break
 
         # 4. Merge state
         merge_state(state, extracted)
+        
+        if state["intent"] == "service_check":
+            matched = be.config.get_service(extracted.get("service") or transcript)
+            if matched:
+                reply_text = f"Yes, we offer {matched['name']}. What day works best for you?"
+                state["intent"] = "book"          # transition straight into booking
+                state["service"] = matched["id"]
+            else:
+                reply_text = "I don't think we offer that specific treatment — could you tell me more about what you're looking for?"
+            print(f"Assistant Service-Check Reply: '{reply_text}'")
+            ttft, tts_time = ap.stream_and_play_tts_safe(reply_text, f"turns/reply_turn_{turn_num}.wav")
+            turn_elapsed = time.perf_counter() - turn_start
+            latency_log.append({
+                "turn": turn_num,
+                "stt_time": stt_time,
+                "llm_time": llm_time,
+                "ttft": ttft,
+                "tts_time": tts_time,
+                "total_turn_time": turn_elapsed,
+                "exceeded_threshold": (stt_time + llm_time + ttft) > 4.0
+            })
+            continue
+        
+        if state["intent"] == "faq":
+            result = answer_question(transcript)
+            reply_text = result["answer"]
+            print("Sources:", [s["url"] for s in result["sources"]])
+            ttft, tts_time = ap.stream_and_play_tts_safe(reply_text, f"turns/reply_turn_{turn_num}.wav")
+            turn_elapsed = time.perf_counter() - turn_start
+            latency_log.append({
+                "turn": turn_num,
+                "stt_time": stt_time,
+                "llm_time": llm_time,
+                "ttft": ttft,
+                "tts_time": tts_time,
+                "total_turn_time": turn_elapsed,
+                "exceeded_threshold": (stt_time + llm_time + ttft) > 4.0
+            })
+            continue
         
         if state["intent"] is None or state["intent"] == "unclear":
             unclear_turns_count += 1
@@ -378,7 +454,7 @@ def run_conversation_live(max_turns: int = 6) -> dict:
         if unclear_turns_count >= 2:
             print("\n[Notice] Intent unclear for 2 consecutive turns.")
             print("[WOULD TRANSFER TO HUMAN]")
-            ap.stream_and_play_tts(
+            ap.stream_and_play_tts_safe(
                 "I'm having trouble understanding your request. Let me transfer you to a human assistant.",
                 f"turns/reply_turn_{turn_num}_transfer.wav"
             )
@@ -391,7 +467,7 @@ def run_conversation_live(max_turns: int = 6) -> dict:
         if missing is not None:
             reply_text = prompt_for_field(missing)
             print(f"Assistant Follow-up Prompt: '{reply_text}'")
-            ttft, tts_time = ap.stream_and_play_tts(reply_text, f"turns/reply_turn_{turn_num}.wav")
+            ttft, tts_time = ap.stream_and_play_tts_safe(reply_text, f"turns/reply_turn_{turn_num}.wav")
         else:
             state["status"] = "executing"
             intent = state["intent"]

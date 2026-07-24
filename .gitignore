@@ -5,3 +5,5 @@ venv/
 *.wav
 *.mp3
 turns/
+data/
+.venv/

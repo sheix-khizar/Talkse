@@ -37,13 +37,16 @@ def get_service(service_id_or_name: str) -> dict | None:
 
     # 4. Keyword map with real valid IDs
     keywords = {
-        "botox": "svc_botox_touchup",
-        "consultation": "svc_consult",
-        "consult": "svc_consult",
-        "filler": "svc_filler_lips",
-        "hydrafacial": "svc_hydrafacial",
-        "laser": "svc_laser_small",
-        "peel": "svc_peel"
+ "botox": "svc_botox_touchup",
+    "consultation": "svc_consult",
+    "consult": "svc_consult",
+    "filler": "svc_filler_lips",
+    "hydrafacial": "svc_hydrafacial",
+    "laser": "svc_laser_small",
+    "peel": "svc_peel",
+    "acne": "svc_peel",
+    "skin": "svc_hydrafacial",
+    "facial": "svc_hydrafacial",
     }
     for kw, default_id in keywords.items():
         if kw in query:
