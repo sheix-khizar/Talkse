@@ -16,14 +16,16 @@ import './LiveCallView.css';
 
 export default function LiveCallView() {
   const { selectedTenant } = useTenant();
-  const [activeCallId, setActiveCallId] = useState('call_88f2e1a9d023');
+  const [activeCallId, setActiveCallId] = useState(null);
   const [activeCalls, setActiveCalls] = useState([]);
 
   useEffect(() => {
     getActiveCalls(selectedTenant.id).then((calls) => {
-      setActiveCalls(calls);
-      if (calls.length > 0) {
+      setActiveCalls(calls || []);
+      if (calls && calls.length > 0) {
         setActiveCallId(calls[0].id);
+      } else {
+        setActiveCallId(null);
       }
     });
   }, [selectedTenant.id]);
@@ -46,15 +48,20 @@ export default function LiveCallView() {
             onSelectCall={setActiveCallId}
           />
 
-          {/* Connection status warning if disconnected or reconnecting */}
+          {/* Connection status warning if disconnected, reconnecting or not found */}
           {liveCall.connectionState === 'RECONNECTING' && (
             <div className="connection-banner reconnecting">
               🔄 Connection dropped. Reconnecting to live WebSocket...
             </div>
           )}
-          {liveCall.connectionState === 'DISCONNECTED' && (
+          {liveCall.connectionState === 'DISCONNECTED' && activeCallId && (
             <div className="connection-banner disconnected">
               ⚠️ Live WebSocket disconnected.
+            </div>
+          )}
+          {liveCall.connectionState === 'NOT_FOUND' && (
+            <div className="connection-banner disconnected">
+              ⚠️ Call session not found on server (4404).
             </div>
           )}
 
@@ -78,6 +85,8 @@ export default function LiveCallView() {
               <WaveformCenterpiece
                 isTalking={liveCall.isAiSpeaking}
                 intent={liveCall.nlu?.intent?.label || 'Schedule Appointment'}
+                isMicActive={liveCall.isMicActive}
+                onToggleMic={liveCall.toggleMicrophone}
               />
 
               <LowConfidenceBanner confidenceScore={confidenceScore} />
@@ -87,7 +96,10 @@ export default function LiveCallView() {
 
             {/* Right Column: Live Transcript + Call Controls */}
             <div className="grid-col col-right">
-              <LiveTranscript transcript={liveCall.transcript} />
+              <LiveTranscript
+                transcript={liveCall.transcript}
+                onSendText={liveCall.sendTextTurn}
+              />
               <CallControls callId={liveCall.callId} />
             </div>
           </div>
