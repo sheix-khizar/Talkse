@@ -7,6 +7,28 @@ from app.services.poc import transcribe
 
 router = APIRouter(prefix="/api/v1/calls", tags=["calls"])
 
+@router.get("")
+@router.get("/")
+def list_active_calls():
+    """Returns currently active/waiting calls from Redis session state.
+    NOTE: this is a placeholder scan — Redis KEYS is O(n) and not safe at
+    production scale. Sprint 6 (multi-tenancy) should replace this with an
+    indexed 'active calls' set maintained by new_session()/save_session(),
+    not a KEYS scan. Flagged here rather than silently left as a footgun."""
+    from app.session.store import list_active_sessions
+    sessions = list_active_sessions()
+    return [
+        {
+            "id": call_id,
+            "status": "ACTIVE" if state.get("status") == "collecting" else state.get("status", "ACTIVE").upper(),
+            "callerName": state.get("caller_name") or "Unknown Caller",
+            "service": state.get("service") or "General Inquiry",
+            "duration": "--:--",  # no started_at timestamp tracked yet — see Sprint 6
+        }
+        for call_id, state in sessions
+    ]
+
+@router.post("")
 @router.post("/")
 def start_call():
     call_id = f"conv_web_{int(time.time())}_{uuid.uuid4().hex[:6]}"
@@ -31,13 +53,29 @@ def turn(call_id: str, payload: dict):
     result = handle_turn(payload["text"], state)
     save_session(call_id, state)
 
-    if result["is_faq"]:
-        stream_gen = result["faq_stream"]
-        sources = next(stream_gen)
-        reply_text = " ".join(list(stream_gen))
-        return {"reply_text": reply_text, "sources": sources, "state": state}
+    reply_text = result.get("reply_text", "")
+    audio_base64 = None
+    if reply_text:
+        import os, tempfile, base64
+        from app.services.poc import synthesize
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            tmp_path = tmp.name
+        try:
+            synthesize(reply_text, tmp_path)
+            with open(tmp_path, "rb") as f:
+                audio_base64 = base64.b64encode(f.read()).decode("ascii")
+        except Exception as e:
+            print(f"[TTS Warning] {e}")
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
 
-    return {"reply_text": result["reply_text"], "state": state, "terminal": result["terminal"]}
+    return {
+        "reply_text": reply_text,
+        "audio_base64": audio_base64,
+        "state": state,
+        "terminal": result.get("terminal", False)
+    }
 
 @router.post("/{call_id}/turn/audio")
 async def turn_audio(call_id: str, file: UploadFile):
