@@ -1,7 +1,13 @@
 import React, { memo } from 'react';
+import { Mic, MicOff } from 'lucide-react';
 import './WaveformCenterpiece.css';
 
-const WaveformCenterpiece = memo(function WaveformCenterpiece({ isTalking = true, intent = "Schedule Appointment" }) {
+const WaveformCenterpiece = memo(function WaveformCenterpiece({
+  isTalking = true,
+  intent = "Schedule Appointment",
+  isMicActive = false,
+  onToggleMic
+}) {
   return (
     <div className="waveform-centerpiece-container">
       {/* 3D Glass Cloud Bubble Shell */}
@@ -38,6 +44,30 @@ const WaveformCenterpiece = memo(function WaveformCenterpiece({ isTalking = true
             {isTalking ? 'AI RECEPCIONIST: TALKING...' : 'AI RECEPCIONIST: LISTENING...'}
           </h2>
           <p className="ai-intent-sub">Current Intent: {intent}</p>
+          
+          {onToggleMic && (
+            <button
+              onClick={onToggleMic}
+              style={{
+                marginTop: '0.75rem',
+                padding: '0.5rem 1rem',
+                borderRadius: '20px',
+                border: 'none',
+                background: isMicActive ? '#ef4444' : '#0d9488',
+                color: '#ffffff',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                zIndex: 10
+              }}
+            >
+              {isMicActive ? <MicOff size={16} /> : <Mic size={16} />}
+              {isMicActive ? 'Mute Mic' : 'Start Speaking (Mic)'}
+            </button>
+          )}
         </div>
       </div>
     </div>

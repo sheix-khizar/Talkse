@@ -2,7 +2,7 @@
 
 export async function getActiveCalls(tenantId = '042') {
   try {
-    const res = await fetch(`/api/v1/calls?tenantId=${tenantId}&status=active,waiting`);
+    const res = await fetch(`/api/v1/calls/`);
     if (!res.ok) throw new Error("Failed to fetch active calls");
     return await res.json();
   } catch (err) {
