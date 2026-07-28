@@ -1,0 +1,97 @@
+.call-controls-container {
+  background-color: #eef7f6;
+  border: 1px solid #c7e6e3;
+  border-radius: 16px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.action-status-banner {
+  background-color: #ffffff;
+  border: 1px solid #99f6e4;
+  color: #0f766e;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.btn-handoff {
+  background-color: #ccfbf1;
+  border: 1px solid #99f6e4;
+  color: #0f766e;
+  border-radius: 12px;
+  padding: 12px;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-align: center;
+  box-shadow: 0 2px 6px rgba(15, 118, 110, 0.04);
+}
+
+.btn-handoff:hover {
+  background-color: #99f6e4;
+  color: #115e59;
+}
+
+.controls-notes-textarea {
+  width: 100%;
+  height: 80px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 10px;
+  font-size: 0.84rem;
+  color: #1e293b;
+  resize: none;
+  background-color: #ffffff;
+}
+
+.controls-notes-textarea:focus {
+  border-color: #0d9488;
+  box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.1);
+}
+
+.controls-btn-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.btn-transfer {
+  background-color: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #1e293b;
+  border-radius: 12px;
+  padding: 12px;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+.btn-transfer:hover {
+  background-color: #f8fafc;
+  border-color: #94a3b8;
+}
+
+.btn-end-call {
+  background-color: #fee2e2;
+  border: 1px solid #fca5a5;
+  color: #b91c1c;
+  border-radius: 12px;
+  padding: 12px;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-align: center;
+}
+
+.btn-end-call:hover {
+  background-color: #fecaca;
+  color: #991b1b;
+}

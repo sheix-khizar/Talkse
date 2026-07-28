@@ -1,0 +1,26 @@
+# Environment & Secrets
+.env
+*.env
+
+# Dependencies
+node_modules/
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Build outputs
+dist/
+build/
+
+# Audio / Temp / Data
+*.wav
+*.mp3
+turns/
+data/
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

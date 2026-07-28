@@ -1,0 +1,11 @@
+groq
+google-genai
+deepgram-sdk
+psycopg2-binary
+python-dateutil
+requests
+beautifulsoup4
+fastapi
+uvicorn[standard]
+pydantic-settings
+redis
