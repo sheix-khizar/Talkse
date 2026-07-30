@@ -11,24 +11,49 @@ import CallControls from '../components/CallControls';
 import ErrorBoundary from '../components/ErrorBoundary';
 import { useLiveCall } from '../hooks/useLiveCall';
 import { useTenant } from '../context/TenantContext';
-import { getActiveCalls } from '../api/calls';
+import { getActiveCalls, startNewCall } from '../api/calls';
 import './LiveCallView.css';
 
 export default function LiveCallView() {
   const { selectedTenant } = useTenant();
   const [activeCallId, setActiveCallId] = useState(null);
   const [activeCalls, setActiveCalls] = useState([]);
+  const [loadError, setLoadError] = useState(null);
 
   useEffect(() => {
-    getActiveCalls(selectedTenant.id).then((calls) => {
-      setActiveCalls(calls || []);
-      if (calls && calls.length > 0) {
-        setActiveCallId(calls[0].id);
-      } else {
+    let cancelled = false;
+    getActiveCalls()
+      .then((calls) => {
+        if (cancelled) return;
+        setLoadError(null);
+        setActiveCalls(calls || []);
+        setActiveCallId(calls && calls.length > 0 ? calls[0].id : null);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.error(err);
+        setLoadError('Could not load active calls — backend is unreachable.');
+        setActiveCalls([]);
         setActiveCallId(null);
-      }
-    });
+      });
+    return () => { cancelled = true; };
   }, [selectedTenant.id]);
+
+  const [startError, setStartError] = useState(null);
+
+  const handleStartCall = async () => {
+    setStartError(null);
+    try {
+      const { call_id } = await startNewCall();
+      setActiveCalls((prev) => [
+        ...prev,
+        { id: call_id, status: 'ACTIVE', callerName: 'New Call (Dashboard)', service: 'General Inquiry', duration: '00:00' },
+      ]);
+      setActiveCallId(call_id);
+    } catch (err) {
+      setStartError('Could not start a new call — is the backend running?');
+    }
+  };
 
   const liveCall = useLiveCall(activeCallId);
   const confidenceScore = liveCall.nlu?.intent?.confidence || 100;
@@ -42,11 +67,17 @@ export default function LiveCallView() {
         {/* Main Dashboard Workspace */}
         <main className="dashboard-content">
           {/* Multi-Call Queue Strip */}
-          <CallQueueStrip
-            calls={activeCalls}
-            activeCallId={activeCallId}
-            onSelectCall={setActiveCallId}
-          />
+          <div className="queue-strip-row">
+            <CallQueueStrip
+              calls={activeCalls}
+              activeCallId={activeCallId}
+              onSelectCall={setActiveCallId}
+            />
+            <button className="btn-start-call" onClick={handleStartCall}>
+              + Start Call
+            </button>
+          </div>
+          {startError && <div className="connection-banner disconnected">{startError}</div>}
 
           {/* Connection status warning if disconnected, reconnecting or not found */}
           {liveCall.connectionState === 'RECONNECTING' && (
@@ -63,6 +94,10 @@ export default function LiveCallView() {
             <div className="connection-banner disconnected">
               ⚠️ Call session not found on server (4404).
             </div>
+          )}
+
+          {loadError && (
+            <div className="connection-banner disconnected">⚠️ {loadError}</div>
           )}
 
           {/* Active Call Status Bar */}

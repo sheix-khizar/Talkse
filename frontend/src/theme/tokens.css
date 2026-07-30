@@ -47,28 +47,24 @@
 
 body {
   font-family: var(--font-family);
-  background-color: var(--bg-outer);
+  background-color: var(--bg-dashboard);
   color: var(--text-main);
   min-height: 100vh;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  padding: 24px 16px;
+  margin: 0;
   -webkit-font-smoothing: antialiased;
 }
 
 #root {
   width: 100%;
-  max-width: 1400px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 /* Base Dashboard App Wrapper */
 .talkse-app {
   background-color: var(--bg-dashboard);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-xl);
-  box-shadow: 0 16px 40px rgba(15, 118, 110, 0.08), 0 4px 12px rgba(0,0,0,0.05);
-  overflow: hidden;
+  flex: 1;
   display: flex;
   flex-direction: column;
 }

@@ -3,10 +3,8 @@ import sys
 from dotenv import load_dotenv
 from google import genai
 
-# Add parent directory to path so we can import modules if needed
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from rag.retriever import retrieve
+from app.services.rag.retriever import retrieve
 
 load_dotenv()
 

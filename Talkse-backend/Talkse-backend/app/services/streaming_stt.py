@@ -29,7 +29,10 @@ import os
 import time
 import queue
 import threading
+import logging
 from deepgram import DeepgramClient
+
+logger = logging.getLogger("talkse")
 
 # Deepgram closes idle streaming connections after ~10-12s with no audio or
 # keep-alive traffic. LLM + TTS turnaround between turns can easily exceed
@@ -91,7 +94,7 @@ class StreamingTranscriber:
             else:
                 self._latest_interim = text
         except Exception as e:
-            print(f"[Streaming STT Warning] Parse error: {e}")
+            logger.warning(f"[Streaming STT Warning] Parse error: {e}")
 
     def _sender_loop(self):
         """Runs on a background thread for the lifetime of the connection
@@ -108,7 +111,7 @@ class StreamingTranscriber:
                     self.conn.send_media(frame)
             except Exception as e:
                 self._send_error = e
-                print(f"[Streaming STT] Send error on background thread: {e}")
+                logger.error(f"[Streaming STT] Send error on background thread: {e}")
             self._send_queue.task_done()
 
     def _keep_alive_loop(self):
@@ -121,7 +124,7 @@ class StreamingTranscriber:
                 if self.conn and self._connection_open:
                     self.conn.send_keep_alive()
             except Exception as e:
-                print(f"[Streaming STT] Keep-alive send failed: {e}")
+                logger.warning(f"[Streaming STT] Keep-alive send failed: {e}")
 
     def start(self):
         """Opens the Deepgram connection ONCE for the whole conversation.
@@ -202,7 +205,7 @@ class StreamingTranscriber:
                 self.conn.send_finalize()
                 time.sleep(0.2)  # brief grace period for the final transcript to arrive over the still-open socket
             except Exception as e:
-                print(f"[Streaming STT Finalize Warning] {e}")
+                logger.warning(f"[Streaming STT Finalize Warning] {e}")
         finalize_overhead = time.perf_counter() - finalize_start
 
         turn_elapsed = time.perf_counter() - self._turn_start_time if self._turn_start_time else 0.0
@@ -234,5 +237,5 @@ class StreamingTranscriber:
                 time.sleep(0.1)
                 self.socket_cm.__exit__(None, None, None)
             except Exception as e:
-                print(f"[Streaming STT Close Warning] {e}")
+                logger.warning(f"[Streaming STT Close Warning] {e}")
         self._connection_open = False

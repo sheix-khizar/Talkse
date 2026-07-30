@@ -1,15 +1,11 @@
-import os
 import hashlib
 from dotenv import load_dotenv
-import sys
 
-# Add parent directory to path so we can import db
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from rag.clean import extract_clean_text
-from rag.chunk import chunk_text
-from rag.embeddings import embed_document
-import db
+from app.services.rag.clean import extract_clean_text
+from app.services.rag.chunk import chunk_text
+from app.services.rag.embeddings import embed_document
+from app.services import db
 
 load_dotenv()
 

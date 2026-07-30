@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     database_url: str
     redis_url: str = "redis://localhost:6379/0"
     cors_origins: list[str] = ["http://localhost:5173"]  # React dev server
+    llm_timeout_seconds: float = 4.0
 
     class Config:
         env_file = ".env"

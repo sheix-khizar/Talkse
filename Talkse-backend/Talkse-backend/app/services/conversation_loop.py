@@ -6,11 +6,11 @@ import uuid
 from dotenv import load_dotenv
 
 # Import functions from poc.py, booking_engine, mic_input, audio_playback
-from poc import transcribe, extract_intent, synthesize, merge_state
-import booking_engine as be
-import db
-from conversation_router import try_rule_based_route
-from rag.rag_chat import answer_question_streaming
+from app.services.ai_clients import transcribe, extract_intent, synthesize, merge_state
+from app.services import booking_engine as be
+from app.services import db
+from app.services.conversation_router import try_rule_based_route
+from app.services.rag.rag_chat import answer_question_streaming
 
 def next_missing_field(state: dict) -> str | None:
     """Returns the name of the first missing required field for state['intent'], or None if complete."""
