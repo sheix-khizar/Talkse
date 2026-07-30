@@ -8,6 +8,7 @@ export function useLiveCall(callId = null) {
   const [patient, setPatient] = useState(null);
   const [nlu, setNlu] = useState(null);
   const [isAiSpeaking, setIsAiSpeaking] = useState(false);
+  const [activePlan, setActivePlan] = useState(null);
   const [connectionState, setConnectionState] = useState(callId ? 'CONNECTING' : 'DISCONNECTED');
   const [turnError, setTurnError] = useState(null);
 
@@ -127,6 +128,9 @@ export function useLiveCall(callId = null) {
         setStatus('ACTIVE');
         if (data?.callerPhone) {
           getPatientByPhone('tenant_042', data.callerPhone).then(setPatient);
+        }
+        if (data?.plan) {
+          setActivePlan(data.plan);
         }
         break;
 
@@ -334,6 +338,7 @@ export function useLiveCall(callId = null) {
     startMicrophone,
     stopMicrophone,
     sendTextTurn,
-    turnError
+    turnError,
+    activePlan
   };
 }
