@@ -19,6 +19,7 @@ export default function LiveCallView() {
   const [activeCallId, setActiveCallId] = useState(null);
   const [activeCalls, setActiveCalls] = useState([]);
   const [loadError, setLoadError] = useState(null);
+  const [voiceTier, setVoiceTier] = useState('free');
 
   useEffect(() => {
     let cancelled = false;
@@ -44,7 +45,7 @@ export default function LiveCallView() {
   const handleStartCall = async () => {
     setStartError(null);
     try {
-      const { call_id } = await startNewCall();
+      const { call_id } = await startNewCall(selectedTenant.id, voiceTier);
       setActiveCalls((prev) => [
         ...prev,
         { id: call_id, status: 'ACTIVE', callerName: 'New Call (Dashboard)', service: 'General Inquiry', duration: '00:00' },
@@ -73,6 +74,14 @@ export default function LiveCallView() {
               activeCallId={activeCallId}
               onSelectCall={setActiveCallId}
             />
+            <select 
+              value={voiceTier} 
+              onChange={e => setVoiceTier(e.target.value)}
+              style={{ marginRight: '1rem', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+            >
+              <option value="free">Standard Voice (Deepgram)</option>
+              <option value="paid">Premium Voice (ElevenLabs)</option>
+            </select>
             <button className="btn-start-call" onClick={handleStartCall}>
               + Start Call
             </button>
@@ -98,6 +107,12 @@ export default function LiveCallView() {
 
           {loadError && (
             <div className="connection-banner disconnected">⚠️ {loadError}</div>
+          )}
+
+          {liveCall.turnError && (
+            <div className="connection-banner disconnected" style={{backgroundColor: '#ffebee', color: '#c62828'}}>
+              ⚠️ Text Turn Failed: {liveCall.turnError}
+            </div>
           )}
 
           {/* Active Call Status Bar */}

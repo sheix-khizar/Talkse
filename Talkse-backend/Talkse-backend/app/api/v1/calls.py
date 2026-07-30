@@ -34,8 +34,10 @@ def list_active_calls():
 
 @router.post("")
 @router.post("/")
-def start_call(tenant_id: str = "clinic_042"):
+def start_call(tenant_id: str = "042", plan: str | None = None):
     from app.services import clinic_config as config
+
+    resolved_plan = plan if plan in ("free", "paid") else config.get_plan_for_tenant(tenant_id)
 
     call_id = f"conv_web_{int(time.time())}_{uuid.uuid4().hex[:6]}"
     state = {
@@ -44,7 +46,7 @@ def start_call(tenant_id: str = "clinic_042"):
         "turn_count": 0, "status": "collecting",
         "idempotency_key": call_id, "booking_result": None,
         "tenant_id": tenant_id,
-        "plan": config.get_plan_for_tenant(tenant_id),
+        "plan": resolved_plan,
     }
     new_session(call_id, state)
     opening = prompt_for_field("intent")
