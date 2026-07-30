@@ -3,7 +3,8 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from app.services.streaming_stt import StreamingTranscriber
 from app.services.conversation_loop import handle_turn
 from app.session.store import get_session, save_session
-from app.services.ai_clients import synthesize
+from app.services.tts.router import synthesize_for_plan
+from app.services import db
 
 router = APIRouter()
 
@@ -15,7 +16,7 @@ async def _emit(websocket: WebSocket, event_type: str, data: dict):
     await websocket.send_json({"type": event_type, "data": data})
 
 
-async def _synthesize_and_emit(websocket: WebSocket, call_id: str, text: str):
+async def _synthesize_and_emit(websocket: WebSocket, call_id: str, text: str, state: dict = None):
     """Synthesizes reply_text to audio and sends it as a base64-encoded
     audio.chunk event. Runs synthesize() in a thread since it's a blocking
     network call (Deepgram SDK is sync) and this handler is async — without
@@ -28,10 +29,24 @@ async def _synthesize_and_emit(websocket: WebSocket, call_id: str, text: str):
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
 
     try:
-        task = asyncio.to_thread(synthesize, text, out_path)
-        await asyncio.wait_for(task, timeout=5.0)
+        plan = state.get("plan", "free") if state else "free"
+        task = asyncio.to_thread(synthesize_for_plan, plan, text, out_path)
+        elapsed, provider_used = await asyncio.wait_for(task, timeout=5.0)
         with open(out_path, "rb") as f:
             audio_bytes = f.read()
+            
+        try:
+            db.log_tts_usage(
+                call_id, 
+                state.get("tenant_id") if state else None, 
+                provider_used, 
+                len(text), 
+                elapsed
+            )
+        except Exception as e:
+            import logging
+            logging.getLogger("talkse").warning(f"[TTS] Failed to log usage: {e}")
+
         await websocket.send_json({
             "type": "audio.chunk",
             "data": {"audio_base64": base64.b64encode(audio_bytes).decode("ascii")},
@@ -71,7 +86,7 @@ async def voice_ws(websocket: WebSocket, call_id: str):
             "status": state.get("status"),
             "isAiSpeaking": True,
         })
-        await _synthesize_and_emit(websocket, call_id, opening)
+        await _synthesize_and_emit(websocket, call_id, opening, state)
         await _emit(websocket, "state.changed", {
             "status": state.get("status"),
             "isAiSpeaking": False,
@@ -103,7 +118,7 @@ async def voice_ws(websocket: WebSocket, call_id: str):
                         "role": "ai",
                         "text": result["reply_text"],
                     })
-                    await _synthesize_and_emit(websocket, call_id, result["reply_text"])
+                    await _synthesize_and_emit(websocket, call_id, result["reply_text"], state)
 
                 await _emit(websocket, "state.changed", {
                     "status": state.get("status"),
