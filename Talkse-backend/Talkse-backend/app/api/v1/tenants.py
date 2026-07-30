@@ -11,6 +11,20 @@ from app.services import db
 router = APIRouter(prefix="/api/v1/tenants/{tenant_id}", tags=["tenants"])
 
 
+@router.get("/tts-usage")
+def get_tts_usage(tenant_id: str):
+    conn = db.get_connection()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT provider, COUNT(*) AS calls, SUM(char_count) AS total_chars
+                FROM tts_usage WHERE tenant_id = %s GROUP BY provider;
+            """, (tenant_id,))
+            return [dict(r) for r in cur.fetchall()]
+    finally:
+        db.release_connection(conn)
+
+
 @router.get("/patients")
 def get_patient(tenant_id: str, phone: str = Query(...)):
     """STOPGAP — there is no `patients` table yet (see fix_plan.md Sprint 6:

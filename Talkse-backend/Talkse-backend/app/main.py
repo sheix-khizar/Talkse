@@ -19,6 +19,7 @@ async def lifespan(app: FastAPI):
     # Startup
     db.init_db()
     db.init_rag_tables()
+    db.init_tts_usage_table()
     yield
     # Shutdown
 

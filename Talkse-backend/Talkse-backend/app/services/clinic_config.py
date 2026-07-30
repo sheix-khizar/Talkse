@@ -13,6 +13,16 @@ PROVIDERS = CLINIC_DATA.get("providers", [])
 SERVICES = CLINIC_DATA.get("services", [])
 EMERGENCY_PROTOCOL = CLINIC_DATA.get("emergency_protocol", {})
 
+# STOPGAP tenant->plan lookup — replace with a DB-backed tenants table in
+# Sprint 6 (see fix_plan.md). Keeping this here, not hardcoded in calls.py,
+# so there's exactly one place to swap out later.
+TENANT_PLANS = {
+    "clinic_042": "paid",
+}
+
+def get_plan_for_tenant(tenant_id: str) -> str:
+    return TENANT_PLANS.get(tenant_id, "free")
+
 def get_service(service_id_or_name: str) -> dict | None:
     """Finds a service by ID or fuzzy matching against service name/category."""
     if not service_id_or_name:

@@ -205,6 +205,38 @@ def init_rag_tables():
     finally:
         release_connection(conn)
 
+def init_tts_usage_table():
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS tts_usage (
+                    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    call_id      TEXT NOT NULL,
+                    tenant_id    TEXT,
+                    provider     TEXT NOT NULL,
+                    char_count   INTEGER NOT NULL,
+                    elapsed_secs REAL,
+                    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+                );
+            """)
+            conn.commit()
+    finally:
+        release_connection(conn)
+
+def log_tts_usage(call_id: str, tenant_id: str | None, provider: str,
+                   char_count: int, elapsed_secs: float):
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO tts_usage (call_id, tenant_id, provider, char_count, elapsed_secs)
+                VALUES (%s, %s, %s, %s, %s);
+            """, (call_id, tenant_id, provider, char_count, elapsed_secs))
+            conn.commit()
+    finally:
+        release_connection(conn)
+
 def get_document_hash(source_url: str) -> str | None:
     """Returns the stored content_hash for a source_url, or None if the
     document doesn't exist yet."""

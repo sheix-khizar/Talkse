@@ -1,6 +1,7 @@
 groq
 google-genai
 deepgram-sdk
+elevenlabs
 psycopg2-binary
 python-dateutil
 requests

@@ -1,5 +1,8 @@
 from fastapi import APIRouter, UploadFile, HTTPException
 import time, uuid
+import logging
+
+logger = logging.getLogger("talkse")
 from app.session.store import new_session, get_session, save_session
 from app.services.conversation_loop import prompt_for_field, handle_turn
 from app.services import db
@@ -31,13 +34,17 @@ def list_active_calls():
 
 @router.post("")
 @router.post("/")
-def start_call():
+def start_call(tenant_id: str = "clinic_042"):
+    from app.services import clinic_config as config
+
     call_id = f"conv_web_{int(time.time())}_{uuid.uuid4().hex[:6]}"
     state = {
         "intent": None, "service": None, "preferred_time": None,
         "caller_name": None, "existing_appointment_ref": None,
         "turn_count": 0, "status": "collecting",
         "idempotency_key": call_id, "booking_result": None,
+        "tenant_id": tenant_id,
+        "plan": config.get_plan_for_tenant(tenant_id),
     }
     new_session(call_id, state)
     opening = prompt_for_field("intent")
@@ -58,15 +65,27 @@ def turn(call_id: str, payload: dict):
     audio_base64 = None
     if reply_text:
         import os, tempfile, base64
-        from app.services.ai_clients import synthesize
+        from app.services.tts.router import synthesize_for_plan
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
             tmp_path = tmp.name
         try:
-            synthesize(reply_text, tmp_path)
+            elapsed, provider_used = synthesize_for_plan(state.get("plan", "free"), reply_text, tmp_path)
             with open(tmp_path, "rb") as f:
                 audio_base64 = base64.b64encode(f.read()).decode("ascii")
+            
+            try:
+                db.log_tts_usage(
+                    call_id,
+                    state.get("tenant_id") if state else None,
+                    provider_used,
+                    len(reply_text),
+                    elapsed
+                )
+            except Exception as e:
+                logger.warning(f"[TTS] Failed to log usage: {e}")
+
         except Exception as e:
-            print(f"[TTS Warning] {e}")
+            logger.error(f"[TTS] synthesis failed for call {call_id}: {e}")
         finally:
             if os.path.exists(tmp_path):
                 os.remove(tmp_path)
