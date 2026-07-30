@@ -8,6 +8,10 @@ from google import genai
 from google.genai import types
 from deepgram import DeepgramClient
 
+import logging
+
+logger = logging.getLogger("talkse")
+
 _groq_client = None
 _gemini_client = None
 _deepgram_client = None
@@ -57,11 +61,11 @@ def transcribe(audio_path: str) -> tuple[str, float]:
         
         transcript = transcription.text if hasattr(transcription, "text") else str(transcription)
         elapsed = time.perf_counter() - start_time
-        print(f"[STT Stage] Groq Whisper completed in {elapsed:.3f}s")
-        print(f"Transcript: '{transcript}'\n")
+        logger.info(f"[STT Stage] Groq Whisper completed in {elapsed:.3f}s")
+        logger.info(f"Transcript: '{transcript}'\n")
         return transcript, elapsed
     except Exception as e:
-        print(f"[STT Warning] Groq Whisper failed: {e}. Falling back to Deepgram Nova-2...")
+        logger.warning(f"[STT Warning] Groq Whisper failed: {e}. Falling back to Deepgram Nova-2...")
 
     api_key = os.getenv("DEEPGRAM_API_KEY")
     if api_key:
@@ -75,11 +79,11 @@ def transcribe(audio_path: str) -> tuple[str, float]:
                 )
             transcript = res.results.channels[0].alternatives[0].transcript
             elapsed = time.perf_counter() - start_time
-            print(f"[STT Stage] Deepgram Nova-2 fallback completed in {elapsed:.3f}s")
-            print(f"Transcript: '{transcript}'\n")
+            logger.info(f"[STT Stage] Deepgram Nova-2 fallback completed in {elapsed:.3f}s")
+            logger.info(f"Transcript: '{transcript}'\n")
             return transcript, elapsed
         except Exception as deepgram_err:
-            print(f"[STT Error] All STT providers failed: {deepgram_err}")
+            logger.error(f"[STT Error] All STT providers failed: {deepgram_err}")
 
     return "", 0.0
 
@@ -145,7 +149,7 @@ def extract_intent(transcript: str) -> tuple[dict, float]:
         )
         raw_text = groq_res.choices[0].message.content.strip()
     except Exception as e:
-        print(f"[LLM Stage Warning] Groq LLM ({model_name}) failed: {e}. Falling back to Gemini 2.0 Flash...")
+        logger.warning(f"[LLM Stage Warning] Groq LLM ({model_name}) failed: {e}. Falling back to Gemini 2.0 Flash...")
         try:
             model_name = "gemini-flash-lite-latest"
             client = get_gemini_client()
@@ -160,7 +164,7 @@ def extract_intent(transcript: str) -> tuple[dict, float]:
             )
             raw_text = response.text.strip() if response.text else ""
         except Exception as fallback_err:
-            print(f"[LLM Stage Error] All LLM providers failed: {fallback_err}. Returning fallback dict.")
+            logger.error(f"[LLM Stage Error] All LLM providers failed: {fallback_err}. Returning fallback dict.")
             elapsed = time.perf_counter() - start_time
             return fallback, elapsed
 
@@ -179,13 +183,13 @@ def extract_intent(transcript: str) -> tuple[dict, float]:
         if extracted_data.get("intent") == "book_appointment":
             extracted_data["intent"] = "book"
     except Exception as parse_err:
-        print(f"[LLM Stage Warning] JSON parse failed: {parse_err}")
-        print(f"Raw response was: {raw_text}")
+        logger.warning(f"[LLM Stage Warning] JSON parse failed: {parse_err}")
+        logger.warning(f"Raw response was: {raw_text}")
         extracted_data = fallback
 
     elapsed = time.perf_counter() - start_time
-    print(f"[LLM Stage] Intent extraction completed in {elapsed:.3f}s using {model_name}")
-    print(f"Extracted Intent Dict: {json.dumps(extracted_data, indent=2)}\n")
+    logger.info(f"[LLM Stage] Intent extraction completed in {elapsed:.3f}s using {model_name}")
+    logger.info(f"Extracted Intent Dict: {json.dumps(extracted_data, indent=2)}\n")
     return extracted_data, elapsed
 
 def synthesize(reply_text: str, out_path: str = "reply.wav") -> float:
@@ -207,8 +211,8 @@ def synthesize(reply_text: str, out_path: str = "reply.wav") -> float:
             f.write(chunk)
             
     elapsed = time.perf_counter() - start_time
-    print(f"[TTS Stage] Deepgram Aura synthesis completed in {elapsed:.3f}s")
-    print(f"Saved audio to: {out_path}\n")
+    logger.info(f"[TTS Stage] Deepgram Aura synthesis completed in {elapsed:.3f}s")
+    logger.info(f"Saved audio to: {out_path}\n")
     return elapsed
 
 def main():

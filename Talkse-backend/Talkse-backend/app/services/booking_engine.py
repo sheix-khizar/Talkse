@@ -3,8 +3,8 @@ import json
 from datetime import datetime, timedelta, time as dt_time
 from dateutil import parser
 
-import clinic_config as config
-import db
+from app.services import clinic_config as config
+from app.services import db
 
 def check_emergency_protocol(text: str) -> str | None:
     """Checks transcript for emergency keywords. Returns emergency guidance if triggered."""

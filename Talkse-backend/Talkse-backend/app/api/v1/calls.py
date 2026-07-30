@@ -3,7 +3,7 @@ import time, uuid
 from app.session.store import new_session, get_session, save_session
 from app.services.conversation_loop import prompt_for_field, handle_turn
 from app.services import db
-from app.services.poc import transcribe
+from app.services.ai_clients import transcribe
 
 router = APIRouter(prefix="/api/v1/calls", tags=["calls"])
 
@@ -26,6 +26,7 @@ def list_active_calls():
             "duration": "--:--",  # no started_at timestamp tracked yet — see Sprint 6
         }
         for call_id, state in sessions
+        if state.get("status") not in ("ended", "done", "rejected", "emergency_transferred", "flagged_human_review")
     ]
 
 @router.post("")
@@ -57,7 +58,7 @@ def turn(call_id: str, payload: dict):
     audio_base64 = None
     if reply_text:
         import os, tempfile, base64
-        from app.services.poc import synthesize
+        from app.services.ai_clients import synthesize
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
             tmp_path = tmp.name
         try:
@@ -84,17 +85,33 @@ async def turn_audio(call_id: str, file: UploadFile):
     if not state:
         raise HTTPException(404, "call not found or expired")
     
-    # We use a temporary file to save the uploaded audio for transcription.
-    tmp_path = f"app/services/turns/tmp_{call_id}_{uuid.uuid4().hex}.wav"
-    import os
-    os.makedirs(os.path.dirname(tmp_path), exist_ok=True)
-    with open(tmp_path, "wb") as f:
-        f.write(await file.read())
+    import os, tempfile
+    
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+        tmp_path = tmp.name
+        tmp.write(await file.read())
         
-    transcript, _ = transcribe(tmp_path)
+    try:
+        transcript, _ = transcribe(tmp_path)
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+            
     if not transcript:
         raise HTTPException(422, "no speech detected")
         
     result = handle_turn(transcript, state)
     save_session(call_id, state)
     return {"transcript": transcript, "reply_text": result["reply_text"], "state": state}
+
+@router.post("/{call_id}/end")
+def end_call(call_id: str):
+    """Marks the session ended. The Redis key still expires naturally via
+    its existing 3600s TTL — we don't delete it early so the dashboard can
+    still show the final transcript/state after end."""
+    state = get_session(call_id)
+    if not state:
+        raise HTTPException(404, "call not found or expired")
+    state["status"] = "ended"
+    save_session(call_id, state)
+    return {"status": "success", "message": "Call ended."}

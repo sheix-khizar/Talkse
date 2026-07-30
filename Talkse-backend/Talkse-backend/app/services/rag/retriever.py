@@ -1,13 +1,8 @@
-import os
-import sys
 
-# Add parent directory to path so we can import db
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from rag.embeddings import embed_query
+from app.services.rag.embeddings import embed_query
 
 def retrieve(query: str, api_key: str, top_k: int = 5) -> list[dict]:
-    import db
+    from app.services import db
     query_vec = embed_query(query, api_key)
     conn = db.get_connection()
     try:

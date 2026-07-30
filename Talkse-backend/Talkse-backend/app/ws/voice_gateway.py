@@ -3,7 +3,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from app.services.streaming_stt import StreamingTranscriber
 from app.services.conversation_loop import handle_turn
 from app.session.store import get_session, save_session
-from app.services.poc import synthesize
+from app.services.ai_clients import synthesize
 
 router = APIRouter()
 
@@ -28,7 +28,8 @@ async def _synthesize_and_emit(websocket: WebSocket, call_id: str, text: str):
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
 
     try:
-        await asyncio.to_thread(synthesize, text, out_path)
+        task = asyncio.to_thread(synthesize, text, out_path)
+        await asyncio.wait_for(task, timeout=5.0)
         with open(out_path, "rb") as f:
             audio_bytes = f.read()
         await websocket.send_json({
@@ -36,7 +37,9 @@ async def _synthesize_and_emit(websocket: WebSocket, call_id: str, text: str):
             "data": {"audio_base64": base64.b64encode(audio_bytes).decode("ascii")},
         })
     except Exception as e:
-        print(f"[TTS Warning] Failed to synthesize/send audio for call {call_id}: {e}")
+        import logging
+        logger = logging.getLogger("talkse")
+        logger.warning(f"[TTS Warning] Failed to synthesize/send audio for call {call_id}: {e}")
     finally:
         if os.path.exists(out_path):
             os.remove(out_path)  # don't accumulate WAV files — see Sprint 4 for the STT temp-file equivalent
@@ -54,6 +57,25 @@ async def voice_ws(websocket: WebSocket, call_id: str):
         "callId": call_id,
         "callerPhone": state.get("caller_phone"),
     })
+
+    if state.get("turn_count", 0) == 0 and state.get("status") == "collecting":
+        from app.services.conversation_loop import next_missing_field, prompt_for_field
+        missing = next_missing_field(state) or "intent"
+        opening = prompt_for_field(missing)
+        
+        await _emit(websocket, "transcript.final", {
+            "role": "ai",
+            "text": opening,
+        })
+        await _emit(websocket, "state.changed", {
+            "status": state.get("status"),
+            "isAiSpeaking": True,
+        })
+        await _synthesize_and_emit(websocket, call_id, opening)
+        await _emit(websocket, "state.changed", {
+            "status": state.get("status"),
+            "isAiSpeaking": False,
+        })
 
     transcriber = StreamingTranscriber(sample_rate=16000)
     transcriber.start()

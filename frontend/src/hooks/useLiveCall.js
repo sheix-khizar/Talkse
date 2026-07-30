@@ -1,14 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
-import { mockCallData } from '../mockData';
 import { getPatientByPhone } from '../api/patients';
 
 export function useLiveCall(callId = null) {
   const [status, setStatus] = useState('ACTIVE');
-  const [durationSeconds, setDurationSeconds] = useState(84);
-  const [transcript, setTranscript] = useState(mockCallData.transcript);
-  const [patient, setPatient] = useState(mockCallData.patient);
-  const [nlu, setNlu] = useState(mockCallData.nlu);
-  const [isAiSpeaking, setIsAiSpeaking] = useState(true);
+  const [durationSeconds, setDurationSeconds] = useState(0);
+  const [transcript, setTranscript] = useState([]);
+  const [patient, setPatient] = useState(null);
+  const [nlu, setNlu] = useState(null);
+  const [isAiSpeaking, setIsAiSpeaking] = useState(false);
   const [connectionState, setConnectionState] = useState(callId ? 'CONNECTING' : 'DISCONNECTED');
 
   const wsRef = useRef(null);
@@ -46,7 +45,8 @@ export function useLiveCall(callId = null) {
     let isUnmounted = false;
 
     const connectWebSocket = () => {
-      const wsUrl = `ws://${window.location.hostname}:8000/ws/calls/${callId}`;
+      const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+      const wsUrl = `${proto}://${window.location.host}/ws/calls/${callId}`;
       setConnectionState('CONNECTING');
 
       try {
@@ -72,8 +72,8 @@ export function useLiveCall(callId = null) {
 
         socket.onerror = () => {
           if (isUnmounted) return;
-          console.warn("WebSocket connection error. Using local live simulation.");
-          setConnectionState('CONNECTED');
+          console.error(`WebSocket connection error for call ${callId}`);
+          setConnectionState('ERROR');
         };
 
         socket.onclose = (event) => {
@@ -102,8 +102,8 @@ export function useLiveCall(callId = null) {
           }
         };
       } catch (e) {
-        console.warn("WebSocket init error:", e);
-        setConnectionState('CONNECTED');
+        console.error("WebSocket init error:", e);
+        setConnectionState('ERROR');
       }
     };
 
