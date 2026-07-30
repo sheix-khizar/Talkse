@@ -17,11 +17,16 @@ EMERGENCY_PROTOCOL = CLINIC_DATA.get("emergency_protocol", {})
 # Sprint 6 (see fix_plan.md). Keeping this here, not hardcoded in calls.py,
 # so there's exactly one place to swap out later.
 TENANT_PLANS = {
-    "042": "paid",
+    "042": "paid",   # Lumina Aesthetics — demo paid/ElevenLabs tenant
+    "043": "free",   # SkinSpirit Medical Spa
+    "044": "free",   # Aesthetic Wellness Clinic
 }
 
-def get_plan_for_tenant(tenant_id: str) -> str:
-    return TENANT_PLANS.get(tenant_id, "free")
+def get_plan_for_tenant(tenant_id: str | None) -> str:
+    if not tenant_id:
+        return "free"
+    normalized = tenant_id.replace("clinic_", "")
+    return TENANT_PLANS.get(normalized, "free")
 
 def get_service(service_id_or_name: str) -> dict | None:
     """Finds a service by ID or fuzzy matching against service name/category."""

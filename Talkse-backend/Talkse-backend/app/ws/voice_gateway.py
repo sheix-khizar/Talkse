@@ -71,6 +71,7 @@ async def voice_ws(websocket: WebSocket, call_id: str):
     await _emit(websocket, "call.started", {
         "callId": call_id,
         "callerPhone": state.get("caller_phone"),
+        "plan": state.get("plan", "free"),
     })
 
     if state.get("turn_count", 0) == 0 and state.get("status") == "collecting":

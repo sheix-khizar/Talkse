@@ -19,7 +19,7 @@ export default function LiveCallView() {
   const [activeCallId, setActiveCallId] = useState(null);
   const [activeCalls, setActiveCalls] = useState([]);
   const [loadError, setLoadError] = useState(null);
-  const [voiceTier, setVoiceTier] = useState('free');
+  const [voiceTier, setVoiceTier] = useState('auto');
 
   useEffect(() => {
     let cancelled = false;
@@ -79,8 +79,9 @@ export default function LiveCallView() {
               onChange={e => setVoiceTier(e.target.value)}
               style={{ marginRight: '1rem', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
             >
-              <option value="free">Standard Voice (Deepgram)</option>
-              <option value="paid">Premium Voice (ElevenLabs)</option>
+              <option value="auto">Voice: Tenant Default</option>
+              <option value="free">Voice: Standard (Deepgram)</option>
+              <option value="paid">Voice: Premium (ElevenLabs)</option>
             </select>
             <button className="btn-start-call" onClick={handleStartCall}>
               + Start Call
@@ -112,6 +113,12 @@ export default function LiveCallView() {
           {liveCall.turnError && (
             <div className="connection-banner disconnected" style={{backgroundColor: '#ffebee', color: '#c62828'}}>
               ⚠️ Text Turn Failed: {liveCall.turnError}
+            </div>
+          )}
+
+          {liveCall.activePlan && (
+            <div className="connection-banner" style={{backgroundColor: '#e8f5e9', color: '#2e7d32'}}>
+              🎙️ Active pipeline: {liveCall.activePlan === 'paid' ? 'Premium (ElevenLabs)' : 'Standard (Deepgram)'}
             </div>
           )}
 

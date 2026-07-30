@@ -10,11 +10,14 @@ export async function getActiveCalls() {
   return await res.json();
 }
 
-export async function startNewCall(tenantId = '042', plan = 'free') {
-  const url = `/api/v1/calls/?tenant_id=${tenantId}&plan=${plan}`;
-  const res = await fetch(url, { method: 'POST' });
-  if (!res.ok) {
-    throw new Error(`Failed to start call (${res.status})`);
+export async function startNewCall(tenantId, planOverride) {
+  const params = new URLSearchParams();
+  if (tenantId) params.set('tenant_id', tenantId);
+  if (planOverride === 'free' || planOverride === 'paid') {
+    params.set('plan', planOverride);
   }
-  return await res.json(); // { call_id, reply_text }
+  const qs = params.toString();
+  const res = await fetch(`/api/v1/calls/${qs ? `?${qs}` : ''}`, { method: 'POST' });
+  if (!res.ok) throw new Error(`Failed to start call (${res.status})`);
+  return await res.json(); // { call_id, reply_text, tenant_id, plan }
 }

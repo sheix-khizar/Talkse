@@ -32,12 +32,19 @@ def list_active_calls():
         if state.get("status") not in ("ended", "done", "rejected", "emergency_transferred", "flagged_human_review")
     ]
 
+def resolve_call_plan(tenant_id: str, plan_override: str | None) -> str:
+    """plan_override is an explicit QA/testing knob ("free" or "paid")
+    that bypasses tenant-based resolution entirely. Any other value
+    (including None) falls back to the tenant's real configured plan."""
+    from app.services import clinic_config as config
+    if plan_override not in ("free", "paid"):
+        plan_override = None
+    return plan_override or config.get_plan_for_tenant(tenant_id)
+
 @router.post("")
 @router.post("/")
 def start_call(tenant_id: str = "042", plan: str | None = None):
-    from app.services import clinic_config as config
-
-    resolved_plan = plan if plan in ("free", "paid") else config.get_plan_for_tenant(tenant_id)
+    resolved_plan = resolve_call_plan(tenant_id, plan)
 
     call_id = f"conv_web_{int(time.time())}_{uuid.uuid4().hex[:6]}"
     state = {
@@ -50,7 +57,7 @@ def start_call(tenant_id: str = "042", plan: str | None = None):
     }
     new_session(call_id, state)
     opening = prompt_for_field("intent")
-    return {"call_id": call_id, "reply_text": opening}
+    return {"call_id": call_id, "reply_text": opening, "tenant_id": tenant_id, "plan": resolved_plan}
 
 @router.post("/{call_id}/turn")
 def turn(call_id: str, payload: dict):
