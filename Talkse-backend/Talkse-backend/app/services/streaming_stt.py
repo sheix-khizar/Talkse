@@ -81,18 +81,18 @@ class StreamingTranscriber:
                 return
             alt = channel.alternatives[0]
             text = getattr(alt, "transcript", "")
-            if not text:
-                return
 
             is_final = getattr(result, "is_final", True)
             speech_final = getattr(result, "speech_final", False)
             if is_final:
-                self._final_transcript_parts.append(text)
+                if text:
+                    self._final_transcript_parts.append(text)
                 self._latest_interim = ""
                 if speech_final:
                     self._turn_complete = True
             else:
-                self._latest_interim = text
+                if text:
+                    self._latest_interim = text
         except Exception as e:
             logger.warning(f"[Streaming STT Warning] Parse error: {e}")
 
@@ -137,7 +137,7 @@ class StreamingTranscriber:
             channels=1,
             interim_results=True,
             punctuate=True,
-            endpointing="500",
+            endpointing=500,
         )
         self.socket_cm = self.connection
         self.conn = self.socket_cm.__enter__()
