@@ -17,7 +17,7 @@ EMERGENCY_PROTOCOL = CLINIC_DATA.get("emergency_protocol", {})
 # Sprint 6 (see fix_plan.md). Keeping this here, not hardcoded in calls.py,
 # so there's exactly one place to swap out later.
 TENANT_PLANS = {
-    "clinic_042": "paid",
+    "042": "paid",
 }
 
 def get_plan_for_tenant(tenant_id: str) -> str:

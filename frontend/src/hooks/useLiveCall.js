@@ -9,6 +9,7 @@ export function useLiveCall(callId = null) {
   const [nlu, setNlu] = useState(null);
   const [isAiSpeaking, setIsAiSpeaking] = useState(false);
   const [connectionState, setConnectionState] = useState(callId ? 'CONNECTING' : 'DISCONNECTED');
+  const [turnError, setTurnError] = useState(null);
 
   const wsRef = useRef(null);
   const timerRef = useRef(null);
@@ -255,6 +256,7 @@ export function useLiveCall(callId = null) {
 
   const sendTextTurn = async (text) => {
     if (!callId || !text.trim()) return;
+    setTurnError(null);
     try {
       setTranscript((prev) => [
         ...prev,
@@ -299,6 +301,7 @@ export function useLiveCall(callId = null) {
       }
     } catch (err) {
       console.error("Failed to send text turn:", err);
+      setTurnError(err.message);
     }
   };
 
@@ -330,6 +333,7 @@ export function useLiveCall(callId = null) {
     toggleMicrophone,
     startMicrophone,
     stopMicrophone,
-    sendTextTurn
+    sendTextTurn,
+    turnError
   };
 }
