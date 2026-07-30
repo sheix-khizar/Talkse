@@ -293,6 +293,9 @@ export function useLiveCall(callId = null) {
             playAudioChunk(data.audio_base64);
           }
         }
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || `Backend error: ${res.status} ${res.statusText}`);
       }
     } catch (err) {
       console.error("Failed to send text turn:", err);

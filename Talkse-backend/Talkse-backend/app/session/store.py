@@ -25,4 +25,4 @@ def get_session(call_id: str) -> dict | None:
     return json.loads(raw) if raw else None
 
 def save_session(call_id: str, state: dict):
-    _r.setex(f"call:{call_id}", 3600, json.dumps(state))
+    _r.setex(f"call:{call_id}", 3600, json.dumps(state, default=str))
