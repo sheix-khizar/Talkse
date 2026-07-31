@@ -1,0 +1,148 @@
+.nlu-panel-container {
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 18px 20px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
+}
+
+.nlu-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.nlu-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.nlu-title {
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: #64748b;
+  letter-spacing: 0.06em;
+}
+
+.nlu-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.nlu-edit-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background-color: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  color: #0f766e;
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.nlu-edit-btn.active {
+  background-color: #e0f2f1;
+  border-color: #99f6e4;
+  color: #0f766e;
+}
+
+.nlu-menu-btn {
+  color: #94a3b8;
+}
+
+.booking-success-toast {
+  background-color: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  color: #047857;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 0.84rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.nlu-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.nlu-slot-card {
+  background-color: #ebf5f5;
+  border: 1px solid #c7e6e6;
+  border-radius: 10px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.slot-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.86rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+.slot-label {
+  color: #1e293b;
+  font-weight: 700;
+}
+
+.slot-value {
+  color: #334155;
+  font-weight: 500;
+}
+
+.slot-inline-input {
+  border: 1px solid #0d9488;
+  border-radius: 6px;
+  padding: 2px 6px;
+  font-size: 0.84rem;
+  color: #0f766e;
+  background-color: #ffffff;
+  width: 100%;
+}
+
+.slot-confidence {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #0f766e;
+  margin-left: 8px;
+}
+
+.nlu-booking-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.btn-confirm-booking {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #0d9488 0%, #06b6d4 100%);
+  color: #ffffff;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 18px;
+  font-size: 0.86rem;
+  font-weight: 700;
+  box-shadow: 0 4px 12px rgba(13, 148, 136, 0.2);
+}
+
+.btn-confirm-booking:hover {
+  opacity: 0.95;
+  transform: translateY(-1px);
+}
