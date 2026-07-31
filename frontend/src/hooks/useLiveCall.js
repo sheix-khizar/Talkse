@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { getPatientByPhone } from '../api/patients';
+import { apiFetch } from '../api/client';
 
-export function useLiveCall(callId = null) {
+export function useLiveCall(callId = null, getToken) {
   const [status, setStatus] = useState('ACTIVE');
   const [durationSeconds, setDurationSeconds] = useState(0);
   const [transcript, setTranscript] = useState([]);
@@ -127,7 +128,7 @@ export function useLiveCall(callId = null) {
       case 'call.started':
         setStatus('ACTIVE');
         if (data?.callerPhone) {
-          getPatientByPhone('tenant_042', data.callerPhone).then(setPatient);
+          getPatientByPhone('tenant_042', data.callerPhone, getToken).then(setPatient);
         }
         if (data?.plan) {
           setActivePlan(data.plan);
@@ -274,11 +275,11 @@ export function useLiveCall(callId = null) {
         }
       ]);
 
-      const res = await fetch(`/api/v1/calls/${callId}/turn`, {
+      const res = await apiFetch(`/api/v1/calls/${callId}/turn`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text })
-      });
+      }, getToken);
 
       if (res.ok) {
         const data = await res.json();

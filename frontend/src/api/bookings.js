@@ -3,15 +3,17 @@
 // pretending a booking succeeded is actively dangerous (a customer could
 // show up to an appointment that was never actually created).
 
-export async function createAppointment(tenantId, payload) {
-  const response = await fetch(`/api/v1/tenants/${tenantId}/appointments`, {
+import { apiFetch } from './client';
+
+export async function createAppointment(tenantId, payload, getToken) {
+  const response = await apiFetch(`/api/v1/tenants/${tenantId}/appointments`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       ...payload,
       idempotencyKey: payload.idempotencyKey || `app_web_${Date.now()}`
     })
-  });
+  }, getToken);
 
   if (!response.ok) {
     const errData = await response.json().catch(() => ({}));

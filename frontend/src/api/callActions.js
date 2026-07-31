@@ -3,10 +3,12 @@
 // No fallback data — a failed request throws, and the caller is
 // responsible for showing a real error to the user.
 
-export async function endCall(callId) {
-  const res = await fetch(`/api/v1/calls/${callId}/end`, {
+import { apiFetch } from './client';
+
+export async function endCall(callId, getToken) {
+  const res = await apiFetch(`/api/v1/calls/${callId}/end`, {
     method: 'POST'
-  });
+  }, getToken);
   if (!res.ok) {
     throw new Error(`Failed to end call (${res.status})`);
   }

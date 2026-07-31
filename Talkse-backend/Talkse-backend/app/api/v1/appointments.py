@@ -1,11 +1,12 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from psycopg2.extras import RealDictCursor
 from app.services import db
+from app.core.security import get_current_user
 
 router = APIRouter(prefix="/api/v1/appointments", tags=["appointments"])
 
 @router.get("/")
-def list_appointments():
+def list_appointments(user: dict = Depends(get_current_user)):
     conn = db.get_connection()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:

@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     cors_origins: list[str] = ["http://localhost:5173"]  # React dev server
     llm_timeout_seconds: float = 4.0
+    clerk_secret_key: str
+    clerk_authorized_party: str = "http://localhost:5173"
 
     # ElevenLabs — paid-tier TTS only. Optional so free-tier-only
     # deployments don't need to set it; router.py never reaches for it

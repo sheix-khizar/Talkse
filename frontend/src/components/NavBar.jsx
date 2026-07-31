@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { Search, Bell, Calendar, ChevronDown, LogOut, Building } from 'lucide-react';
 import { useTenant } from '../context/TenantContext';
-import { useAuth } from '../auth/AuthContext';
+import { useAuth, useUser } from '@clerk/clerk-react';
 import './NavBar.css';
 
 export default function NavBar() {
   const [activeTab, setActiveTab] = useState('Appointments');
   const { selectedTenant, setSelectedTenant, tenants } = useTenant();
-  const { user, logout } = useAuth();
+  const { signOut } = useAuth();
+  const { user } = useUser();
 
   const tabs = [
     { id: 'Overview', label: 'Overview' },
@@ -85,13 +86,13 @@ export default function NavBar() {
         {/* User profile */}
         <div className="user-profile">
           <img
-            src={user?.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80"}
+            src={user?.imageUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80"}
             alt="User avatar"
             className="user-avatar"
           />
           <div className="user-info">
             <span className="user-name">
-              {user?.name || 'Luninsitara'}
+              {user?.fullName || user?.primaryEmailAddress?.emailAddress || 'User'}
             </span>
             <span className="user-sub">{user?.role || 'ADMIN'}</span>
           </div>
@@ -110,7 +111,7 @@ export default function NavBar() {
         </div>
 
         {/* Logout Button */}
-        <button className="icon-button logout-btn" onClick={logout} title="Sign Out">
+        <button className="icon-button logout-btn" onClick={() => signOut()} title="Sign Out">
           <LogOut size={18} />
         </button>
       </div>
