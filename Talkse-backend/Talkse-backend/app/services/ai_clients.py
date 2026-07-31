@@ -201,12 +201,9 @@ def extract_intent(transcript: str) -> tuple[dict, float]:
 def synthesize(reply_text: str, out_path: str = "reply.wav") -> float:
     """Synthesizes speech from reply_text using Deepgram Aura (aura-asteria-en)."""
     start_time = time.perf_counter()
-    api_key = os.getenv("DEEPGRAM_API_KEY")
-    if not api_key:
-        raise ValueError("DEEPGRAM_API_KEY missing in environment variables.")
-    
-    client = DeepgramClient(api_key=api_key)
-    
+
+    client = get_deepgram_client()  # reuse the cached client instead of making a new one every call
+
     audio_stream = client.speak.v1.audio.generate(
         text=reply_text,
         model="aura-asteria-en"

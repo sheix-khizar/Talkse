@@ -16,9 +16,9 @@ def get_client(api_key: str):
         _gemini_client = genai.Client(api_key=api_key)
     return _gemini_client
 
-def answer_question_streaming(question: str):
+def answer_question_streaming(tenant_id: str, question: str):
     api_key = os.getenv("GEMINI_API_KEY")
-    results = retrieve(question, api_key, top_k=2)
+    results = retrieve(tenant_id, question, api_key, top_k=2)
 
     context_block = "\n\n---\n\n".join(r["chunk"] for r in results)
 
@@ -63,7 +63,7 @@ def answer_question_streaming(question: str):
         yield buffer.strip()
 
 if __name__ == "__main__":
-    stream_gen = answer_question_streaming("What is Botox?")
+    stream_gen = answer_question_streaming("demo_tenant", "What is Botox?")
     first_yield = next(stream_gen)
     print("Sources:", [s["url"] for s in first_yield])
     for chunk in stream_gen:

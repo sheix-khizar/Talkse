@@ -119,53 +119,7 @@ def handle_turn(transcript: str, state: dict) -> dict:
         return {"reply_text": emergency_msg, "llm_time": 0.0, "routed": False,
                 "is_faq": False, "faq_stream": None, "terminal": True}
 
-    trans_lower = transcript.lower().strip()
-
-    # 2. Doctor/Provider Inquiry Fast-Path
-    doctor_keywords = [
-        "doctor", "doctors", "provider", "providers", "physician", "dermatologist",
-        "who works", "who are your doctors", "how many doctors", "who can i see", "who is available"
-    ]
-    if any(kw in trans_lower for kw in doctor_keywords):
-        reply_text = (
-            "Our team features Dr. Emily Carter (Medical Director & Injector - Mon/Wed/Fri), "
-            "Dr. Aaron Patel (Laser & Body Contouring Specialist - Tue/Thu/Sat), "
-            "Sarah Nguyen, NP-C (Nurse Injector - Mon-Fri), and Licensed Estheticians Rachel Lopez & Monica Reyes. "
-            "Which doctor or service would you like to book?"
-        )
-        return {
-            "reply_text": reply_text,
-            "llm_time": 0.0,
-            "routed": True,
-            "is_faq": False,
-            "faq_stream": None,
-            "terminal": False
-        }
-
-    # 3. Service Inquiry Fast-Path
-    service_query_keywords = [
-        "what service", "what services", "what kind of service", "what treatment", "what treatments",
-        "what do you offer", "what do you provide", "services do you provide", "services do you offer",
-        "services you provide", "services you offer", "list of services", "all services",
-        "what do you have", "what can i book", "what are your services", "tell me about your services",
-        "which services", "what kind of treatments", "which treatments"
-    ]
-    if any(kw in trans_lower for kw in service_query_keywords):
-        reply_text = (
-            "We offer a full range of aesthetic treatments including Botox and neuromodulators, "
-            "dermal fillers, HydraFacials, chemical peels, microneedling, laser hair removal, and consultations. "
-            "Which service would you like to book or ask about?"
-        )
-        return {
-            "reply_text": reply_text,
-            "llm_time": 0.0,
-            "routed": True,
-            "is_faq": False,
-            "faq_stream": None,
-            "terminal": False
-        }
-
-    # 4. Fast-path router or LLM
+    # 2. Fast-path router or LLM
     state["_awaiting_field"] = next_missing_field(state)
     routed = try_rule_based_route(transcript, state)
     if routed is not None:
@@ -173,7 +127,7 @@ def handle_turn(transcript: str, state: dict) -> dict:
     else:
         extracted, llm_time = safe_extract_intent_with_retry(transcript)
 
-    # 5. Contraindication check
+    # 3. Contraindication check
     svc_candidate = be.config.get_service(state.get("service") or extracted.get("service") or "")
     contra_reason = be.check_contraindications(svc_candidate, transcript)
     if contra_reason:
@@ -181,35 +135,13 @@ def handle_turn(transcript: str, state: dict) -> dict:
         return {"reply_text": contra_reason, "llm_time": llm_time, "routed": routed is not None,
                 "is_faq": False, "faq_stream": None, "terminal": True}
 
-    # 6. Merge state
+    # 4. Merge state
     merge_state(state, extracted)
 
-    # 5. Doctor/Provider inquiry check
-    trans_lower = transcript.lower().strip()
-    doctor_query_keywords = [
-        "which doctor", "who is the doctor", "what doctors", "who works", "providers",
-        "doctor available", "provider available", "who are your doctors", "list of doctors",
-        "tell me about your doctors", "who can i see"
-    ]
-    if any(kw in trans_lower for kw in doctor_query_keywords):
-        reply_text = (
-            "Our medical team includes Dr. Emily Carter (Medical Director & Injector - Mon/Wed/Fri), "
-            "Dr. Aaron Patel (Laser & Body Contouring Specialist - Tue/Thu/Sat), "
-            "Sarah Nguyen, NP-C (Nurse Injector - Mon-Fri), and Rachel Lopez & Monica Reyes (Licensed Estheticians). "
-            "Which provider or treatment would you like to book?"
-        )
-        return {
-            "reply_text": reply_text,
-            "llm_time": llm_time,
-            "routed": routed is not None,
-            "is_faq": False,
-            "faq_stream": None,
-            "terminal": False
-        }
-
-    # 5b. service_check branch
+    # 5. service_check branch
     if state["intent"] == "service_check":
         raw_svc = (extracted.get("service") or "").lower().strip()
+        trans_lower = transcript.lower().strip()
 
         general_query_keywords = [
             "what service", "what kind of service", "what treatment", "what do you offer",
@@ -225,17 +157,13 @@ def handle_turn(transcript: str, state: dict) -> dict:
         )
 
         if is_general_inquiry:
-            reply_text = (
-                "We offer a variety of aesthetic treatments including Botox and neuromodulators, "
-                "dermal fillers, HydraFacials, chemical peels, microneedling, and new patient consultations. "
-                "Which service would you like to book or learn more about?"
-            )
+            stream_gen = answer_question_streaming(state.get("tenant_id"), transcript)
             return {
-                "reply_text": reply_text,
+                "reply_text": None,
                 "llm_time": llm_time,
                 "routed": routed is not None,
-                "is_faq": False,
-                "faq_stream": None,
+                "is_faq": True,
+                "faq_stream": stream_gen,
                 "terminal": False
             }
 
@@ -254,7 +182,7 @@ def handle_turn(transcript: str, state: dict) -> dict:
             }
         else:
             # Unmatched specific treatment -> query RAG knowledge base
-            stream_gen = answer_question_streaming(transcript)
+            stream_gen = answer_question_streaming(state.get("tenant_id"), transcript)
             return {
                 "reply_text": None,
                 "llm_time": llm_time,
@@ -266,7 +194,9 @@ def handle_turn(transcript: str, state: dict) -> dict:
 
     # 6. faq branch -> hands back the RAG streaming generator, caller synthesizes it
     if state["intent"] == "faq":
-        stream_gen = answer_question_streaming(transcript)
+        stream_gen = answer_question_streaming(state.get("tenant_id"), transcript)
+        return {"reply_text": None, "llm_time": llm_time, "routed": routed is not None,
+                "is_faq": True, "faq_stream": stream_gen, "terminal": False}
         return {"reply_text": None, "llm_time": llm_time, "routed": routed is not None,
                 "is_faq": True, "faq_stream": stream_gen, "terminal": False}
 

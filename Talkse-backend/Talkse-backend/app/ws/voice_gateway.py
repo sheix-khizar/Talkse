@@ -125,17 +125,19 @@ async def voice_ws(websocket: WebSocket, call_id: str):
                     try:
                         stream = result["faq_stream"]
                         _sources = next(stream, None)  # first yield is sources list
-                        text_chunks = []
+                        # Speak each sentence as soon as it's ready, instead of
+                        # waiting for the whole answer to finish generating —
+                        # this is what actually cuts perceived latency on FAQ
+                        # answers, since the caller hears the first sentence
+                        # almost immediately.
                         for item in stream:
                             if isinstance(item, str) and item.strip():
-                                text_chunks.append(item.strip())
-                        full_reply = " ".join(text_chunks).strip()
-                        if full_reply:
-                            await _emit(websocket, "transcript.final", {
-                                "role": "ai",
-                                "text": full_reply,
-                            })
-                            await _synthesize_and_emit(websocket, call_id, full_reply, state)
+                                sentence = item.strip()
+                                await _emit(websocket, "transcript.final", {
+                                    "role": "ai",
+                                    "text": sentence,
+                                })
+                                await _synthesize_and_emit(websocket, call_id, sentence, state)
                     except Exception as e:
                         import logging
                         logging.getLogger("talkse").error(f"[WebSocket RAG Error] {e}")

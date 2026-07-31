@@ -180,12 +180,23 @@ def init_rag_tables():
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS documents (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    tenant_id TEXT NOT NULL,
                     source_url TEXT NOT NULL,
                     category TEXT NOT NULL,
                     title TEXT,
                     content_hash TEXT,
                     updated_at TIMESTAMPTZ DEFAULT now()
                 );
+            """)
+            # If this table already existed on your database from before this
+            # change, the CREATE TABLE IF NOT EXISTS above won't add the new
+            # column. Run this once by hand to be safe (it's a no-op if the
+            # column already exists):
+            cur.execute("""
+                ALTER TABLE documents ADD COLUMN IF NOT EXISTS tenant_id TEXT;
+            """)
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_documents_tenant ON documents (tenant_id);
             """)
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS document_chunks (
@@ -237,23 +248,29 @@ def log_tts_usage(call_id: str, tenant_id: str | None, provider: str,
     finally:
         release_connection(conn)
 
-def get_document_hash(source_url: str) -> str | None:
-    """Returns the stored content_hash for a source_url, or None if the
-    document doesn't exist yet."""
+def get_document_hash(tenant_id: str, source_url: str) -> str | None:
+    """Returns the stored content_hash for a (tenant_id, source_url) pair,
+    or None if the document doesn't exist yet."""
     conn = get_connection()
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT content_hash FROM documents WHERE source_url = %s;", (source_url,))
+            cur.execute(
+                "SELECT content_hash FROM documents WHERE tenant_id = %s AND source_url = %s;",
+                (tenant_id, source_url),
+            )
             row = cur.fetchone()
             return row[0] if row else None
     finally:
         release_connection(conn)
 
-def upsert_document(source_url: str, category: str, title: str, content_hash: str) -> str:
+def upsert_document(tenant_id: str, source_url: str, category: str, title: str, content_hash: str) -> str:
     conn = get_connection()
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT id, content_hash FROM documents WHERE source_url = %s;", (source_url,))
+            cur.execute(
+                "SELECT id, content_hash FROM documents WHERE tenant_id = %s AND source_url = %s;",
+                (tenant_id, source_url),
+            )
             row = cur.fetchone()
             if row and row[1] == content_hash:
                 return str(row[0])  # unchanged, skip re-embedding
@@ -264,9 +281,9 @@ def upsert_document(source_url: str, category: str, title: str, content_hash: st
                 conn.commit()
                 return str(row[0])
             cur.execute("""
-                INSERT INTO documents (source_url, category, title, content_hash)
-                VALUES (%s, %s, %s, %s) RETURNING id;
-            """, (source_url, category, title, content_hash))
+                INSERT INTO documents (tenant_id, source_url, category, title, content_hash)
+                VALUES (%s, %s, %s, %s, %s) RETURNING id;
+            """, (tenant_id, source_url, category, title, content_hash))
             new_id = cur.fetchone()[0]
             conn.commit()
             return str(new_id)
