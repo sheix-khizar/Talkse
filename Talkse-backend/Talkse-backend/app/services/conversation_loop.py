@@ -138,6 +138,24 @@ def handle_turn(transcript: str, state: dict) -> dict:
     # 4. Merge state
     merge_state(state, extracted)
 
+    # 4b. Safety net — if we just asked "book, reschedule, or cancel?" and the
+    # caller's answer still didn't resolve to a clear intent (e.g. they asked
+    # a question instead, and it didn't get classified as 'faq' for some
+    # reason), do NOT just repeat the same opening question again. Try to
+    # actually answer what they said via the FAQ/RAG system instead. This is
+    # what stops the AI from looping the same line forever.
+    unresolved_intent = state.get("intent") in (None, "unclear", "none", "null")
+    if unresolved_intent and state.get("_awaiting_field") == "intent":
+        stream_gen = answer_question_streaming(state.get("tenant_id"), transcript)
+        return {
+            "reply_text": None,
+            "llm_time": llm_time,
+            "routed": routed is not None,
+            "is_faq": True,
+            "faq_stream": stream_gen,
+            "terminal": False
+        }
+
     # 5. service_check branch
     if state["intent"] == "service_check":
         raw_svc = (extracted.get("service") or "").lower().strip()
@@ -195,8 +213,6 @@ def handle_turn(transcript: str, state: dict) -> dict:
     # 6. faq branch -> hands back the RAG streaming generator, caller synthesizes it
     if state["intent"] == "faq":
         stream_gen = answer_question_streaming(state.get("tenant_id"), transcript)
-        return {"reply_text": None, "llm_time": llm_time, "routed": routed is not None,
-                "is_faq": True, "faq_stream": stream_gen, "terminal": False}
         return {"reply_text": None, "llm_time": llm_time, "routed": routed is not None,
                 "is_faq": True, "faq_stream": stream_gen, "terminal": False}
 
