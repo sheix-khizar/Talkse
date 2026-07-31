@@ -93,8 +93,14 @@ def merge_state(current_state: dict, new_extracted: dict) -> dict:
     if new_intent == "book_appointment":
         new_intent = "book"
 
-    if new_intent in ("book", "reschedule", "cancel", "faq", "service_check") and current_state.get("intent") in (None, "unclear"):
+    # Only transition intent to 'book' if there is at least one entity extracted or explicitly intended
+    if new_intent in ("reschedule", "cancel", "faq", "service_check") and current_state.get("intent") in (None, "unclear"):
         current_state["intent"] = new_intent
+    elif new_intent == "book":
+        # Ensure we don't lock state to 'book' on ambiguous questions that extracted no entities
+        has_entities = any(new_extracted.get(f) for f in ("service", "preferred_time", "caller_name"))
+        if has_entities or current_state.get("intent") in (None, "unclear"):
+            current_state["intent"] = "book"
 
     for field in ("service", "preferred_time", "caller_name", "existing_appointment_ref"):
         val = new_extracted.get(field)

@@ -17,6 +17,11 @@ export function useLiveCall(callId = null) {
   const reconnectAttemptsRef = useRef(0);
   const maxReconnectAttempts = 5;
 
+  // Drives mic gating specifically. Set true the instant local audio playback
+  // starts, false only after it actually ends (plus a short grace period).
+  const isSpeakerActiveRef = useRef(false);
+  const activeAudioRef = useRef(null);
+
   // Format seconds to mm:ss
   const formatDuration = (totalSec) => {
     const mins = Math.floor(totalSec / 60);
@@ -203,9 +208,25 @@ export function useLiveCall(callId = null) {
   const mediaStreamRef = useRef(null);
   const processorRef = useRef(null);
 
+  const isUserSpeakingRef = useRef(false);
+  const [isUserSpeaking, setIsUserSpeaking] = useState(false);
+  const lastVoiceAtRef = useRef(0);
+
+  const SPEECH_RMS_THRESHOLD = 0.02;
+  const SPEECH_HANGOVER_MS = 300;
+  const SPEAKER_ECHO_GRACE_MS = 100;
+
   const startMicrophone = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          sampleRate: 16000,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        }
+      });
       mediaStreamRef.current = stream;
 
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
@@ -216,8 +237,42 @@ export function useLiveCall(callId = null) {
       processorRef.current = processor;
 
       processor.onaudioprocess = (e) => {
-        if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
         const inputData = e.inputBuffer.getChannelData(0);
+
+        // --- Voice-activity detection (drives the waveform UI only) ---
+        if (isSpeakerActiveRef.current) {
+          // AI is talking — force "user speaking" off immediately
+          if (isUserSpeakingRef.current) {
+            isUserSpeakingRef.current = false;
+            setIsUserSpeaking(false);
+          }
+        } else {
+          let sumSquares = 0;
+          for (let i = 0; i < inputData.length; i++) {
+            sumSquares += inputData[i] * inputData[i];
+          }
+          const rms = Math.sqrt(sumSquares / inputData.length);
+          const now = performance.now();
+
+          if (rms > SPEECH_RMS_THRESHOLD) {
+            lastVoiceAtRef.current = now;
+            if (!isUserSpeakingRef.current) {
+              isUserSpeakingRef.current = true;
+              setIsUserSpeaking(true);
+            }
+          } else if (
+            isUserSpeakingRef.current &&
+            now - lastVoiceAtRef.current > SPEECH_HANGOVER_MS
+          ) {
+            isUserSpeakingRef.current = false;
+            setIsUserSpeaking(false);
+          }
+        }
+
+        // --- Mic-send logic ---
+        if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+        if (isSpeakerActiveRef.current) return;
+
         const pcm16 = new Int16Array(inputData.length);
         for (let i = 0; i < inputData.length; i++) {
           const s = Math.max(-1, Math.min(1, inputData[i]));
@@ -247,6 +302,8 @@ export function useLiveCall(callId = null) {
       mediaStreamRef.current.getTracks().forEach((t) => t.stop());
       mediaStreamRef.current = null;
     }
+    isUserSpeakingRef.current = false;
+    setIsUserSpeaking(false);
     setIsMicActive(false);
   };
 
@@ -317,10 +374,42 @@ export function useLiveCall(callId = null) {
       const blob = new Blob([bytes], { type: 'audio/wav' });
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
-      audio.play().catch((err) => console.warn('Audio playback blocked:', err));
-      audio.onended = () => URL.revokeObjectURL(url);
+
+      if (activeAudioRef.current) {
+        try { activeAudioRef.current.pause(); } catch (e) { }
+      }
+      activeAudioRef.current = audio;
+
+      isSpeakerActiveRef.current = true;
+
+      const releaseSpeakerLock = () => {
+        setTimeout(() => {
+          if (activeAudioRef.current === audio) {
+            isSpeakerActiveRef.current = false;
+          }
+        }, SPEAKER_ECHO_GRACE_MS);
+      };
+
+      audio.onended = () => {
+        URL.revokeObjectURL(url);
+        releaseSpeakerLock();
+      };
+      audio.onerror = () => {
+        URL.revokeObjectURL(url);
+        if (activeAudioRef.current === audio) {
+          isSpeakerActiveRef.current = false;
+        }
+      };
+
+      audio.play().catch((err) => {
+        console.warn('Audio playback blocked:', err);
+        if (activeAudioRef.current === audio) {
+          isSpeakerActiveRef.current = false;
+        }
+      });
     } catch (err) {
       console.error('Failed to play audio chunk:', err);
+      isSpeakerActiveRef.current = false;
     }
   };
 
@@ -332,6 +421,7 @@ export function useLiveCall(callId = null) {
     patient,
     nlu,
     isAiSpeaking,
+    isUserSpeaking,
     connectionState,
     isMicActive,
     toggleMicrophone,

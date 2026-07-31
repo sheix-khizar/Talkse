@@ -141,6 +141,7 @@ export default function LiveCallView() {
             <div className="grid-col col-center">
               <WaveformCenterpiece
                 isTalking={liveCall.isAiSpeaking}
+                isUserSpeaking={liveCall.isUserSpeaking}
                 intent={liveCall.nlu?.intent?.label || 'Schedule Appointment'}
                 isMicActive={liveCall.isMicActive}
                 onToggleMic={liveCall.toggleMicrophone}

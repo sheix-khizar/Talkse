@@ -4,16 +4,30 @@ import './WaveformCenterpiece.css';
 
 const WaveformCenterpiece = memo(function WaveformCenterpiece({
   isTalking = true,
+  isUserSpeaking = false,
   intent = "Schedule Appointment",
   isMicActive = false,
   onToggleMic
 }) {
+  const isAnimating = isTalking || isUserSpeaking;
+
+  let statusText;
+  if (isTalking) {
+    statusText = 'AI RECEPTIONIST: TALKING...';
+  } else if (isUserSpeaking) {
+    statusText = 'LISTENING: YOU ARE SPEAKING...';
+  } else if (isMicActive) {
+    statusText = 'READY — WAITING FOR YOU TO SPEAK';
+  } else {
+    statusText = 'MIC OFF';
+  }
+
   return (
     <div className="waveform-centerpiece-container">
       {/* 3D Glass Cloud Bubble Shell */}
-      <div className={`glass-cloud-wrapper ${isTalking ? 'is-talking' : ''}`}>
+      <div className={`glass-cloud-wrapper ${isTalking ? 'is-talking' : ''} ${isUserSpeaking ? 'is-listening' : ''}`}>
         {/* Animated Background Audio Spectrum Waves */}
-        <div className={`waveform-spectrum left-spectrum ${isTalking ? 'animating' : 'paused'}`}>
+        <div className={`waveform-spectrum left-spectrum ${isAnimating ? 'animating' : 'paused'}`}>
           <div className="bar bar-1"></div>
           <div className="bar bar-2"></div>
           <div className="bar bar-3"></div>
@@ -23,7 +37,7 @@ const WaveformCenterpiece = memo(function WaveformCenterpiece({
           <div className="bar bar-7"></div>
         </div>
 
-        <div className={`waveform-spectrum right-spectrum ${isTalking ? 'animating' : 'paused'}`}>
+        <div className={`waveform-spectrum right-spectrum ${isAnimating ? 'animating' : 'paused'}`}>
           <div className="bar bar-7"></div>
           <div className="bar bar-6"></div>
           <div className="bar bar-5"></div>
@@ -41,7 +55,7 @@ const WaveformCenterpiece = memo(function WaveformCenterpiece({
         {/* Center Text Overlay */}
         <div className="center-content">
           <h2 className="ai-status-heading">
-            {isTalking ? 'AI RECEPCIONIST: TALKING...' : 'AI RECEPCIONIST: LISTENING...'}
+            {statusText}
           </h2>
           <p className="ai-intent-sub">Current Intent: {intent}</p>
           

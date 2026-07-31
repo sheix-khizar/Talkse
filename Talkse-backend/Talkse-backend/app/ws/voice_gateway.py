@@ -94,7 +94,14 @@ async def voice_ws(websocket: WebSocket, call_id: str):
         })
 
     transcriber = StreamingTranscriber(sample_rate=16000)
-    transcriber.start()
+    try:
+        transcriber.start()
+    except Exception as e:
+        import logging
+        logging.getLogger("talkse").error(f"[WebSocket Error] Transcriber start failed: {e}")
+        await websocket.close(code=1011)
+        return
+
     transcriber.begin_turn()
     try:
         while True:
@@ -114,7 +121,25 @@ async def voice_ws(websocket: WebSocket, call_id: str):
                     "isAiSpeaking": True,
                 })
 
-                if result.get("reply_text"):
+                if result.get("is_faq") and result.get("faq_stream"):
+                    try:
+                        stream = result["faq_stream"]
+                        _sources = next(stream, None)  # first yield is sources list
+                        text_chunks = []
+                        for item in stream:
+                            if isinstance(item, str) and item.strip():
+                                text_chunks.append(item.strip())
+                        full_reply = " ".join(text_chunks).strip()
+                        if full_reply:
+                            await _emit(websocket, "transcript.final", {
+                                "role": "ai",
+                                "text": full_reply,
+                            })
+                            await _synthesize_and_emit(websocket, call_id, full_reply, state)
+                    except Exception as e:
+                        import logging
+                        logging.getLogger("talkse").error(f"[WebSocket RAG Error] {e}")
+                elif result.get("reply_text"):
                     await _emit(websocket, "transcript.final", {
                         "role": "ai",
                         "text": result["reply_text"],
