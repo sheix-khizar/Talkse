@@ -13,7 +13,12 @@ def get_current_user(request: Request) -> dict:
     request_state = _clerk.authenticate_request(
         request,
         AuthenticateRequestOptions(
-            authorized_parties=[settings.clerk_authorized_party],
+            authorized_parties=[
+                settings.clerk_authorized_party,
+                "http://localhost:3000",
+                "http://localhost:3001",
+                "http://localhost:5173"
+            ],
         ),
     )
     if not request_state.is_signed_in:
@@ -22,3 +27,11 @@ def get_current_user(request: Request) -> dict:
             f"Not authenticated: {request_state.reason}",
         )
     return request_state.payload  # dict with 'sub' (Clerk user id), etc.
+
+
+def get_tenant_id(user_payload: dict = Depends(get_current_user)) -> str:
+    """Extracts the tenant ID (Clerk org_id) from the authenticated user token.
+    Falls back to '042' if no org is present during development/testing."""
+    org_id = user_payload.get("org_id")
+    # For now, default to "042" if the user has no Clerk Organization assigned
+    return org_id or "042"

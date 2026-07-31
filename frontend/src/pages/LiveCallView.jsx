@@ -64,8 +64,6 @@ export default function LiveCallView() {
   return (
     <ErrorBoundary>
       <div className="talkse-app">
-        {/* Top Header Navigation */}
-        <NavBar />
 
         {/* Main Dashboard Workspace */}
         <main className="dashboard-content">

@@ -6,7 +6,11 @@ class Settings(BaseSettings):
     deepgram_api_key: str
     database_url: str
     redis_url: str = "redis://localhost:6379/0"
-    cors_origins: list[str] = ["http://localhost:5173"]  # React dev server
+    cors_origins: list[str] = [
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://localhost:3001"
+    ]
     llm_timeout_seconds: float = 4.0
     clerk_secret_key: str
     clerk_authorized_party: str = "http://localhost:5173"

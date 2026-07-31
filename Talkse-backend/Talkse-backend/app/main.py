@@ -18,8 +18,12 @@ from app.ws import voice_gateway
 async def lifespan(app: FastAPI):
     # Startup
     db.init_db()
+    db.init_tenant_tables()
+    db.migrate_tenant_columns()
     db.init_rag_tables()
     db.init_tts_usage_table()
+    db.init_call_logs_table()
+    db.enable_tenant_rls()
     yield
     # Shutdown
 

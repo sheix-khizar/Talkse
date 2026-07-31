@@ -3,7 +3,10 @@ import sys
 import time
 import json
 import uuid
+import logging
 from dotenv import load_dotenv
+
+logger = logging.getLogger("talkse")
 
 # Import functions from poc.py, booking_engine, mic_input, audio_playback
 from app.services.ai_clients import transcribe, extract_intent, synthesize, merge_state
@@ -48,12 +51,12 @@ def safe_transcribe_with_retry(audio_path: str) -> tuple[str | None, float]:
     try:
         return transcribe(audio_path)
     except Exception as e:
-        print(f"[STT Retry Warning] Transcribe attempt 1 failed: {e}. Retrying once...")
+        logger.warning(f"[STT Retry Warning] Transcribe attempt 1 failed: {e}. Retrying once...")
         time.sleep(1)
         try:
             return transcribe(audio_path)
         except Exception as retry_err:
-            print(f"[STT Error] Transcribe failed permanently: {retry_err}")
+            logger.error(f"[STT Error] Transcribe failed permanently: {retry_err}")
             return None, 0.0
 
 def safe_extract_intent_with_retry(transcript: str) -> tuple[dict, float]:
@@ -61,12 +64,12 @@ def safe_extract_intent_with_retry(transcript: str) -> tuple[dict, float]:
     try:
         return extract_intent(transcript)
     except Exception as e:
-        print(f"[LLM Retry Warning] Intent extraction attempt 1 failed: {e}. Retrying once...")
+        logger.warning(f"[LLM Retry Warning] Intent extraction attempt 1 failed: {e}. Retrying once...")
         time.sleep(1)
         try:
             return extract_intent(transcript)
         except Exception as retry_err:
-            print(f"[LLM Error] Intent extraction failed permanently: {retry_err}")
+            logger.error(f"[LLM Error] Intent extraction failed permanently: {retry_err}")
             fallback = {
                 "intent": "unclear",
                 "service": None,
@@ -82,12 +85,12 @@ def safe_synthesize_with_retry(text: str, out_path: str) -> float:
     try:
         return synthesize(text, out_path)
     except Exception as e:
-        print(f"[TTS Retry Warning] Synthesis attempt 1 failed: {e}. Retrying once...")
+        logger.warning(f"[TTS Retry Warning] Synthesis attempt 1 failed: {e}. Retrying once...")
         time.sleep(1)
         try:
             return synthesize(text, out_path)
         except Exception as retry_err:
-            print(f"[TTS Error] Synthesis failed permanently: {retry_err}")
+            logger.error(f"[TTS Error] Synthesis failed permanently: {retry_err}")
             return 0.0
 
 def handle_turn(transcript: str, state: dict) -> dict:
@@ -112,8 +115,10 @@ def handle_turn(transcript: str, state: dict) -> dict:
                                         transferred/emergency/flagged)
         }
     """
+    tenant_id = state.get("tenant_id", db.DEFAULT_TENANT_ID)
+
     # 1. Emergency check
-    emergency_msg = be.check_emergency_protocol(transcript)
+    emergency_msg = be.check_emergency_protocol(tenant_id, transcript)
     if emergency_msg:
         state["status"] = "emergency_transferred"
         return {"reply_text": emergency_msg, "llm_time": 0.0, "routed": False,
@@ -128,7 +133,7 @@ def handle_turn(transcript: str, state: dict) -> dict:
         extracted, llm_time = safe_extract_intent_with_retry(transcript)
 
     # 3. Contraindication check
-    svc_candidate = be.config.get_service(state.get("service") or extracted.get("service") or "")
+    svc_candidate = be.config.get_service(tenant_id, state.get("service") or extracted.get("service") or "")
     contra_reason = be.check_contraindications(svc_candidate, transcript)
     if contra_reason:
         state["status"] = "flagged_human_review"
@@ -171,7 +176,7 @@ def handle_turn(transcript: str, state: dict) -> dict:
                 "terminal": False
             }
 
-        matched = be.config.get_service(extracted.get("service") or transcript)
+        matched = be.config.get_service(tenant_id, extracted.get("service") or transcript)
         if matched:
             reply_text = f"Yes, we offer {matched['name']}. What day works best for you?"
             state["intent"] = "book"
@@ -186,7 +191,7 @@ def handle_turn(transcript: str, state: dict) -> dict:
             }
         else:
             # Unmatched specific treatment -> query RAG knowledge base
-            stream_gen = answer_question_streaming(transcript)
+            stream_gen = answer_question_streaming(transcript, tenant_id=tenant_id)
             return {
                 "reply_text": None,
                 "llm_time": llm_time,
@@ -198,7 +203,7 @@ def handle_turn(transcript: str, state: dict) -> dict:
 
     # 6. faq branch -> hands back the RAG streaming generator, caller synthesizes it
     if state["intent"] == "faq":
-        stream_gen = answer_question_streaming(transcript)
+        stream_gen = answer_question_streaming(transcript, tenant_id=tenant_id)
         return {"reply_text": None, "llm_time": llm_time, "routed": routed is not None,
                 "is_faq": True, "faq_stream": stream_gen, "terminal": False}
 
@@ -211,21 +216,21 @@ def handle_turn(transcript: str, state: dict) -> dict:
         state["status"] = "executing"
         intent = state["intent"]
         if intent == "book":
-            result = be.book_appointment(state, state["idempotency_key"])
+            result = be.book_appointment(tenant_id, state, state["idempotency_key"])
             state["booking_result"] = result
             if result["status"] == "confirmed":
                 reply_text, state["status"] = result["message"], "done"
             else:
                 reply_text, state["status"] = f"I couldn't complete that booking: {result['reason']}", "rejected"
         elif intent == "reschedule":
-            result = be.reschedule_appointment(state["existing_appointment_ref"], state["preferred_time"])
+            result = be.reschedule_appointment(tenant_id, state["existing_appointment_ref"], state["preferred_time"])
             state["booking_result"] = result
             if result["status"] == "rescheduled":
                 reply_text, state["status"] = result["message"], "done"
             else:
                 reply_text, state["status"] = f"I couldn't reschedule that appointment: {result['reason']}", "rejected"
         elif intent == "cancel":
-            result = be.cancel_appointment(state["existing_appointment_ref"])
+            result = be.cancel_appointment(tenant_id, state["existing_appointment_ref"])
             state["booking_result"] = result
             if result["status"] == "cancelled":
                 reply_text, state["status"] = result["message"], "done"

@@ -106,6 +106,10 @@ async def voice_ws(websocket: WebSocket, call_id: str):
                     "text": transcript,
                 })
 
+                if "transcript" not in state:
+                    state["transcript"] = []
+                state["transcript"].append({"role": "customer", "text": transcript})
+
                 result = handle_turn(transcript, state)
                 save_session(call_id, state)
 
@@ -119,6 +123,8 @@ async def voice_ws(websocket: WebSocket, call_id: str):
                         "role": "ai",
                         "text": result["reply_text"],
                     })
+                    state["transcript"].append({"role": "ai", "text": result["reply_text"]})
+                    save_session(call_id, state)
                     await _synthesize_and_emit(websocket, call_id, result["reply_text"], state)
 
                 await _emit(websocket, "state.changed", {
@@ -136,3 +142,23 @@ async def voice_ws(websocket: WebSocket, call_id: str):
         pass
     finally:
         transcriber.close()
+        # Save call log if not already saved via /end endpoint
+        state = get_session(call_id)
+        if state and state.get("status") not in ("ended",):
+            state["status"] = "ended"
+            save_session(call_id, state)
+            tenant_id = state.get("tenant_id")
+            if tenant_id:
+                try:
+                    db.insert_call_log(
+                        tenant_id=tenant_id,
+                        call_id=call_id,
+                        caller_name=state.get("caller_name"),
+                        status=state["status"],
+                        started_at=None,
+                        transcript=state.get("transcript", []),
+                        booking_result=state.get("booking_result")
+                    )
+                except Exception as e:
+                    import logging
+                    logging.getLogger("talkse").error(f"Failed to save call log for {call_id}: {e}")
