@@ -219,17 +219,25 @@ export function useLiveCall(callId = null, getToken) {
       if (audioCtx.audioWorklet) {
         const workletCode = `
           class PCMProcessor extends AudioWorkletProcessor {
+            constructor() {
+              super();
+              this.buffer = new Int16Array(3200);
+              this.bufferIdx = 0;
+            }
             process(inputs) {
               const input = inputs[0];
               if (input && input.length > 0) {
                 const channelData = input[0];
                 if (channelData) {
-                  const pcm16 = new Int16Array(channelData.length);
                   for (let i = 0; i < channelData.length; i++) {
                     const s = Math.max(-1, Math.min(1, channelData[i]));
-                    pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                    this.buffer[this.bufferIdx++] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                    if (this.bufferIdx >= 3200) {
+                      const sendBuffer = this.buffer.slice(0, 3200);
+                      this.port.postMessage(sendBuffer.buffer, [sendBuffer.buffer]);
+                      this.bufferIdx = 0;
+                    }
                   }
-                  this.port.postMessage(pcm16.buffer, [pcm16.buffer.buffer]);
                 }
               }
               return true;
@@ -340,6 +348,17 @@ export function useLiveCall(callId = null, getToken) {
           setIsAiSpeaking(true);
           if (data.audio_base64) {
             playAudioChunk(data.audio_base64);
+          }
+        }
+        if (data.state) {
+          if (data.state.status) setStatus(data.state.status);
+          if (data.state.intent) {
+            setNlu({
+              intent: { label: data.state.intent, confidence: 95 },
+              service: data.state.service,
+              time: data.state.preferred_time,
+              callerName: data.state.caller_name
+            });
           }
         }
       } else {

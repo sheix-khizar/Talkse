@@ -12,6 +12,9 @@ from app.main import app
 from app.session.store import list_active_sessions
 
 
+from app.core.security import get_tenant_id
+
+
 def test_list_active_sessions_scanner():
     with patch("app.session.store._r") as mock_redis:
         mock_redis.scan_iter.return_value = ["call:conv_123", "call:conv_456"]
@@ -27,25 +30,29 @@ def test_list_active_sessions_scanner():
 
 
 def test_list_active_calls_endpoint():
-    client = TestClient(app)
-    with patch("app.session.store.list_active_sessions") as mock_list:
-        mock_list.return_value = [
-            ("conv_123", {"status": "collecting", "caller_name": "Alice", "service": "Botox"}),
-            ("conv_456", {"status": "confirmed", "caller_name": "Bob", "service": "Consultation"})
-        ]
-        response = client.get("/api/v1/calls/")
-        assert response.status_code == 200
-        data = response.json()
-        assert isinstance(data, list)
-        assert len(data) == 2
-        assert data[0]["id"] == "conv_123"
-        assert data[0]["status"] == "ACTIVE"
-        assert data[0]["callerName"] == "Alice"
-        assert data[0]["service"] == "Botox"
-        assert data[1]["status"] == "CONFIRMED"
+    app.dependency_overrides[get_tenant_id] = lambda: "042"
+    try:
+        client = TestClient(app)
+        with patch("app.session.store.list_active_sessions") as mock_list:
+            mock_list.return_value = [
+                ("conv_123", {"status": "collecting", "caller_name": "Alice", "service": "Botox", "tenant_id": "042"}),
+                ("conv_456", {"status": "confirmed", "caller_name": "Bob", "service": "Consultation", "tenant_id": "042"})
+            ]
+            response = client.get("/api/v1/calls/")
+            assert response.status_code == 200
+            data = response.json()
+            assert isinstance(data, list)
+            assert len(data) == 2
+            assert data[0]["id"] == "conv_123"
+            assert data[0]["status"] == "ACTIVE"
+            assert data[0]["callerName"] == "Alice"
+            assert data[0]["service"] == "Botox"
+            assert data[1]["status"] == "CONFIRMED"
+    finally:
+        app.dependency_overrides.clear()
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_websocket_emit_contract():
     from app.ws.voice_gateway import _emit
     mock_ws = MagicMock()

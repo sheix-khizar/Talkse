@@ -57,6 +57,7 @@ def start_call(tenant_id: str = "042", plan: str | None = None):
         "idempotency_key": call_id, "booking_result": None,
         "tenant_id": tenant_id,
         "plan": resolved_plan,
+        "initial_prompt_emitted": True,
     }
     new_session(call_id, state)
     opening = prompt_for_field("intent")
@@ -69,8 +70,12 @@ def turn(call_id: str, payload: dict):
     if not state:
         raise HTTPException(404, "call not found or expired")
 
-    state["turn_count"] += 1
-    result = handle_turn(payload["text"], state)
+    text_input = payload.get("text", "").strip() if isinstance(payload, dict) else ""
+    if not text_input:
+        raise HTTPException(400, "Text payload cannot be empty")
+
+    state["turn_count"] = state.get("turn_count", 0) + 1
+    result = handle_turn(text_input, state)
     save_session(call_id, state)
 
     reply_text = result.get("reply_text", "")

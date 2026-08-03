@@ -74,7 +74,9 @@ async def voice_ws(websocket: WebSocket, call_id: str):
         "plan": state.get("plan", "free"),
     })
 
-    if state.get("turn_count", 0) == 0 and state.get("status") == "collecting":
+    if state.get("turn_count", 0) == 0 and state.get("status") == "collecting" and not state.get("initial_prompt_emitted"):
+        state["initial_prompt_emitted"] = True
+        save_session(call_id, state)
         from app.services.conversation_loop import next_missing_field, prompt_for_field
         missing = next_missing_field(state) or "intent"
         opening = prompt_for_field(missing)
@@ -93,13 +95,44 @@ async def voice_ws(websocket: WebSocket, call_id: str):
             "isAiSpeaking": False,
         })
 
-    transcriber = StreamingTranscriber(sample_rate=16000)
-    transcriber.start()
-    transcriber.begin_turn()
+    transcriber = None
+    try:
+        transcriber = StreamingTranscriber(sample_rate=16000)
+        transcriber.start()
+        transcriber.begin_turn()
+    except Exception as e:
+        import logging
+        logging.getLogger("talkse").warning(f"[Streaming STT Warning] Could not start live transcriber: {e}")
+
     try:
         while True:
-            data = await websocket.receive_bytes()
-            transcript = transcriber.feed(data)
+            msg = await websocket.receive()
+            if msg.get("type") == "websocket.disconnect":
+                break
+
+            data_bytes = msg.get("bytes")
+            data_text = msg.get("text")
+
+            if data_bytes:
+                if transcriber:
+                    try:
+                        transcript = transcriber.feed(data_bytes)
+                    except Exception as err:
+                        import logging
+                        logging.getLogger("talkse").warning(f"[Streaming STT Feed Error] {err}")
+                        transcript = None
+                else:
+                    transcript = None
+            elif data_text:
+                try:
+                    import json
+                    parsed = json.loads(data_text)
+                    transcript = parsed.get("text") or parsed.get("transcript")
+                except Exception:
+                    transcript = data_text
+            else:
+                transcript = None
+
             if transcript:
                 await _emit(websocket, "transcript.final", {
                     "role": "customer",
@@ -116,20 +149,31 @@ async def voice_ws(websocket: WebSocket, call_id: str):
                 await _emit(websocket, "state.changed", {
                     "status": state.get("status"),
                     "isAiSpeaking": True,
+                    "nlu": {
+                        "intent": {"label": state.get("intent"), "confidence": 95},
+                        "service": state.get("service"),
+                        "time": state.get("preferred_time"),
+                        "callerName": state.get("caller_name")
+                    }
                 })
 
-                if result.get("reply_text"):
+                reply_text = result.get("reply_text")
+                if reply_text:
                     await _emit(websocket, "transcript.final", {
                         "role": "ai",
-                        "text": result["reply_text"],
+                        "text": reply_text,
                     })
-                    state["transcript"].append({"role": "ai", "text": result["reply_text"]})
-                    save_session(call_id, state)
-                    await _synthesize_and_emit(websocket, call_id, result["reply_text"], state)
+                    await _synthesize_and_emit(websocket, call_id, reply_text, state)
 
                 await _emit(websocket, "state.changed", {
                     "status": state.get("status"),
                     "isAiSpeaking": False,
+                    "nlu": {
+                        "intent": {"label": state.get("intent"), "confidence": 95},
+                        "service": state.get("service"),
+                        "time": state.get("preferred_time"),
+                        "callerName": state.get("caller_name")
+                    }
                 })
 
                 if result["terminal"]:

@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch, AsyncMock, mock_open
 from app.ws.voice_gateway import _synthesize_and_emit
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_synthesize_and_emit():
     mock_ws = MagicMock()
     sent_data = []
