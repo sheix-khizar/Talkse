@@ -1,15 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
-import { mockCallData } from '../mockData';
 import { getPatientByPhone } from '../api/patients';
+import { apiFetch } from '../api/client';
 
-export function useLiveCall(callId = null) {
+export function useLiveCall(callId = null, getToken) {
   const [status, setStatus] = useState('ACTIVE');
-  const [durationSeconds, setDurationSeconds] = useState(84);
-  const [transcript, setTranscript] = useState(mockCallData.transcript);
-  const [patient, setPatient] = useState(mockCallData.patient);
-  const [nlu, setNlu] = useState(mockCallData.nlu);
-  const [isAiSpeaking, setIsAiSpeaking] = useState(true);
+  const [durationSeconds, setDurationSeconds] = useState(0);
+  const [transcript, setTranscript] = useState([]);
+  const [patient, setPatient] = useState(null);
+  const [nlu, setNlu] = useState(null);
+  const [isAiSpeaking, setIsAiSpeaking] = useState(false);
+  const [activePlan, setActivePlan] = useState(null);
   const [connectionState, setConnectionState] = useState(callId ? 'CONNECTING' : 'DISCONNECTED');
+  const [turnError, setTurnError] = useState(null);
 
   const wsRef = useRef(null);
   const timerRef = useRef(null);
@@ -46,11 +48,13 @@ export function useLiveCall(callId = null) {
     let isUnmounted = false;
 
     const connectWebSocket = () => {
+
       // Use the current page's port so the connection routes through Vite's
       // /ws proxy (configured in vite.config.js) → ws://127.0.0.1:8000
       const wsPort = window.location.port || (window.location.protocol === 'https:' ? '443' : '80');
       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${wsProtocol}//${window.location.hostname}:${wsPort}/ws/calls/${callId}`;
+
       setConnectionState('CONNECTING');
 
       try {
@@ -76,8 +80,8 @@ export function useLiveCall(callId = null) {
 
         socket.onerror = () => {
           if (isUnmounted) return;
-          console.warn("WebSocket connection error. Using local live simulation.");
-          setConnectionState('CONNECTED');
+          console.error(`WebSocket connection error for call ${callId}`);
+          setConnectionState('ERROR');
         };
 
         socket.onclose = (event) => {
@@ -106,8 +110,8 @@ export function useLiveCall(callId = null) {
           }
         };
       } catch (e) {
-        console.warn("WebSocket init error:", e);
-        setConnectionState('CONNECTED');
+        console.error("WebSocket init error:", e);
+        setConnectionState('ERROR');
       }
     };
 
@@ -129,7 +133,10 @@ export function useLiveCall(callId = null) {
       case 'call.started':
         setStatus('ACTIVE');
         if (data?.callerPhone) {
-          getPatientByPhone('tenant_042', data.callerPhone).then(setPatient);
+          getPatientByPhone('tenant_042', data.callerPhone, getToken).then(setPatient);
+        }
+        if (data?.plan) {
+          setActivePlan(data.plan);
         }
         break;
 
@@ -259,6 +266,7 @@ export function useLiveCall(callId = null) {
 
   const sendTextTurn = async (text) => {
     if (!callId || !text.trim()) return;
+    setTurnError(null);
     try {
       setTranscript((prev) => [
         ...prev,
@@ -272,11 +280,11 @@ export function useLiveCall(callId = null) {
         }
       ]);
 
-      const res = await fetch(`/api/v1/calls/${callId}/turn`, {
+      const res = await apiFetch(`/api/v1/calls/${callId}/turn`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text })
-      });
+      }, getToken);
 
       if (res.ok) {
         const data = await res.json();
@@ -297,9 +305,13 @@ export function useLiveCall(callId = null) {
             playAudioChunk(data.audio_base64);
           }
         }
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || `Backend error: ${res.status} ${res.statusText}`);
       }
     } catch (err) {
       console.error("Failed to send text turn:", err);
+      setTurnError(err.message);
     }
   };
 
@@ -331,6 +343,8 @@ export function useLiveCall(callId = null) {
     toggleMicrophone,
     startMicrophone,
     stopMicrophone,
-    sendTextTurn
+    sendTextTurn,
+    turnError,
+    activePlan
   };
 }

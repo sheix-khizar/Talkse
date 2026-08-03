@@ -3,7 +3,8 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from app.services.streaming_stt import StreamingTranscriber
 from app.services.conversation_loop import handle_turn
 from app.session.store import get_session, save_session
-from app.services.poc import synthesize
+from app.services.tts.router import synthesize_for_plan
+from app.services import db
 
 router = APIRouter()
 
@@ -15,7 +16,7 @@ async def _emit(websocket: WebSocket, event_type: str, data: dict):
     await websocket.send_json({"type": event_type, "data": data})
 
 
-async def _synthesize_and_emit(websocket: WebSocket, call_id: str, text: str):
+async def _synthesize_and_emit(websocket: WebSocket, call_id: str, text: str, state: dict = None):
     """Synthesizes reply_text to audio and sends it as a base64-encoded
     audio.chunk event. Runs synthesize() in a thread since it's a blocking
     network call (Deepgram SDK is sync) and this handler is async — without
@@ -28,15 +29,32 @@ async def _synthesize_and_emit(websocket: WebSocket, call_id: str, text: str):
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
 
     try:
-        await asyncio.to_thread(synthesize, text, out_path)
+        plan = state.get("plan", "free") if state else "free"
+        task = asyncio.to_thread(synthesize_for_plan, plan, text, out_path)
+        elapsed, provider_used = await asyncio.wait_for(task, timeout=5.0)
         with open(out_path, "rb") as f:
             audio_bytes = f.read()
+            
+        try:
+            db.log_tts_usage(
+                call_id, 
+                state.get("tenant_id") if state else None, 
+                provider_used, 
+                len(text), 
+                elapsed
+            )
+        except Exception as e:
+            import logging
+            logging.getLogger("talkse").warning(f"[TTS] Failed to log usage: {e}")
+
         await websocket.send_json({
             "type": "audio.chunk",
             "data": {"audio_base64": base64.b64encode(audio_bytes).decode("ascii")},
         })
     except Exception as e:
-        print(f"[TTS Warning] Failed to synthesize/send audio for call {call_id}: {e}")
+        import logging
+        logger = logging.getLogger("talkse")
+        logger.warning(f"[TTS Warning] Failed to synthesize/send audio for call {call_id}: {e}")
     finally:
         if os.path.exists(out_path):
             os.remove(out_path)  # don't accumulate WAV files — see Sprint 4 for the STT temp-file equivalent
@@ -53,7 +71,27 @@ async def voice_ws(websocket: WebSocket, call_id: str):
     await _emit(websocket, "call.started", {
         "callId": call_id,
         "callerPhone": state.get("caller_phone"),
+        "plan": state.get("plan", "free"),
     })
+
+    if state.get("turn_count", 0) == 0 and state.get("status") == "collecting":
+        from app.services.conversation_loop import next_missing_field, prompt_for_field
+        missing = next_missing_field(state) or "intent"
+        opening = prompt_for_field(missing)
+        
+        await _emit(websocket, "transcript.final", {
+            "role": "ai",
+            "text": opening,
+        })
+        await _emit(websocket, "state.changed", {
+            "status": state.get("status"),
+            "isAiSpeaking": True,
+        })
+        await _synthesize_and_emit(websocket, call_id, opening, state)
+        await _emit(websocket, "state.changed", {
+            "status": state.get("status"),
+            "isAiSpeaking": False,
+        })
 
     transcriber = StreamingTranscriber(sample_rate=16000)
     transcriber.start()
@@ -68,6 +106,10 @@ async def voice_ws(websocket: WebSocket, call_id: str):
                     "text": transcript,
                 })
 
+                if "transcript" not in state:
+                    state["transcript"] = []
+                state["transcript"].append({"role": "customer", "text": transcript})
+
                 result = handle_turn(transcript, state)
                 save_session(call_id, state)
 
@@ -81,7 +123,9 @@ async def voice_ws(websocket: WebSocket, call_id: str):
                         "role": "ai",
                         "text": result["reply_text"],
                     })
-                    await _synthesize_and_emit(websocket, call_id, result["reply_text"])
+                    state["transcript"].append({"role": "ai", "text": result["reply_text"]})
+                    save_session(call_id, state)
+                    await _synthesize_and_emit(websocket, call_id, result["reply_text"], state)
 
                 await _emit(websocket, "state.changed", {
                     "status": state.get("status"),
@@ -98,3 +142,23 @@ async def voice_ws(websocket: WebSocket, call_id: str):
         pass
     finally:
         transcriber.close()
+        # Save call log if not already saved via /end endpoint
+        state = get_session(call_id)
+        if state and state.get("status") not in ("ended",):
+            state["status"] = "ended"
+            save_session(call_id, state)
+            tenant_id = state.get("tenant_id")
+            if tenant_id:
+                try:
+                    db.insert_call_log(
+                        tenant_id=tenant_id,
+                        call_id=call_id,
+                        caller_name=state.get("caller_name"),
+                        status=state["status"],
+                        started_at=None,
+                        transcript=state.get("transcript", []),
+                        booking_result=state.get("booking_result")
+                    )
+                except Exception as e:
+                    import logging
+                    logging.getLogger("talkse").error(f"Failed to save call log for {call_id}: {e}")

@@ -1,19 +1,32 @@
-import React, { useState, memo } from 'react';
+import React, { useState, useEffect, memo } from 'react';
 import { MoreHorizontal, Edit3, CheckCircle, Calendar } from 'lucide-react';
+import { useAuth } from '@clerk/clerk-react';
 import { createAppointment } from '../api/bookings';
 import './NluBookingPanel.css';
 
 const NluBookingPanel = memo(function NluBookingPanel({ nlu, tenantId = '042' }) {
+  const { getToken } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [isBooking, setIsBooking] = useState(false);
   const [bookingSuccess, setBookingSuccess] = useState(null);
 
   const [slots, setSlots] = useState({
-    intent: nlu?.intent?.label || 'Schedule Appointment',
-    provider: nlu?.provider?.label || 'Dr. Smith',
-    time: nlu?.time?.label || '16:00, Tuesday',
-    service: nlu?.service?.label || 'Botox Touch-up'
+    intent: nlu?.intent?.label || '',
+    provider: nlu?.provider?.label || '',
+    time: nlu?.time?.label || '',
+    service: nlu?.service?.label || ''
   });
+
+  // Keep in sync as real NLU data arrives over the WebSocket after mount —
+  // the state above only captures the value at first render otherwise.
+  useEffect(() => {
+    setSlots({
+      intent: nlu?.intent?.label || '',
+      provider: nlu?.provider?.label || '',
+      time: nlu?.time?.label || '',
+      service: nlu?.service?.label || ''
+    });
+  }, [nlu]);
 
   const handleSlotChange = (key, value) => {
     setSlots((prev) => ({ ...prev, [key]: value }));
@@ -28,7 +41,7 @@ const NluBookingPanel = memo(function NluBookingPanel({ nlu, tenantId = '042' })
         provider: slots.provider,
         time: slots.time,
         service: slots.service
-      });
+      }, getToken);
       setBookingSuccess(res.message || 'Appointment confirmed!');
       setIsEditing(false);
     } catch (err) {
@@ -65,6 +78,10 @@ const NluBookingPanel = memo(function NluBookingPanel({ nlu, tenantId = '042' })
         </div>
       )}
 
+      {!nlu && (
+        <p className="empty-state-text">No booking data extracted from this call yet.</p>
+      )}
+
       {/* 2x2 Slot Grid */}
       <div className="nlu-grid">
         <div className="nlu-slot-card">
@@ -81,7 +98,9 @@ const NluBookingPanel = memo(function NluBookingPanel({ nlu, tenantId = '042' })
               <span className="slot-value">{slots.intent}</span>
             )}
           </div>
-          <span className="slot-confidence">100%</span>
+          <span className="slot-confidence">
+            {nlu?.intent?.confidence != null ? `${nlu.intent.confidence}%` : '—'}
+          </span>
         </div>
 
         <div className="nlu-slot-card">
@@ -98,7 +117,9 @@ const NluBookingPanel = memo(function NluBookingPanel({ nlu, tenantId = '042' })
               <span className="slot-value">{slots.provider}</span>
             )}
           </div>
-          <span className="slot-confidence">100%</span>
+          <span className="slot-confidence">
+            {nlu?.provider?.confidence != null ? `${nlu.provider.confidence}%` : '—'}
+          </span>
         </div>
 
         <div className="nlu-slot-card">
@@ -115,7 +136,9 @@ const NluBookingPanel = memo(function NluBookingPanel({ nlu, tenantId = '042' })
               <span className="slot-value">{slots.time}</span>
             )}
           </div>
-          <span className="slot-confidence">100%</span>
+          <span className="slot-confidence">
+            {nlu?.time?.confidence != null ? `${nlu.time.confidence}%` : '—'}
+          </span>
         </div>
 
         <div className="nlu-slot-card">
@@ -132,7 +155,9 @@ const NluBookingPanel = memo(function NluBookingPanel({ nlu, tenantId = '042' })
               <span className="slot-value">{slots.service}</span>
             )}
           </div>
-          <span className="slot-confidence">100%</span>
+          <span className="slot-confidence">
+            {nlu?.service?.confidence != null ? `${nlu.service.confidence}%` : '—'}
+          </span>
         </div>
       </div>
 

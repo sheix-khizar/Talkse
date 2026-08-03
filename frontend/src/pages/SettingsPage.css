@@ -1,0 +1,111 @@
+.settings-container {
+  max-width: 900px;
+}
+
+.settings-section {
+  margin-bottom: 3rem;
+}
+
+.settings-section h3 {
+  font-size: 1.25rem;
+  color: var(--text-color);
+  margin-bottom: 0.25rem;
+}
+
+.section-desc {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  margin-bottom: 1.5rem;
+}
+
+.settings-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 1.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.settings-label {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+  color: var(--text-color);
+}
+
+.settings-select {
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  background: var(--bg-color);
+  color: var(--text-color);
+  font-size: 1rem;
+  min-width: 250px;
+  cursor: pointer;
+}
+
+.settings-select:focus {
+  outline: none;
+  border-color: var(--accent-color);
+}
+
+.profile-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.profile-row {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  align-items: start;
+}
+
+.profile-label {
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.profile-value {
+  color: var(--text-color);
+  font-weight: 500;
+}
+
+.hours-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.hour-item {
+  display: flex;
+  gap: 1.5rem;
+}
+
+.hour-day {
+  width: 100px;
+  text-transform: capitalize;
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.item-card h4 {
+  margin-bottom: 0.5rem;
+  font-size: 1rem;
+}
+
+.item-card p {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  margin-bottom: 0.75rem;
+}
+
+.contra-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}

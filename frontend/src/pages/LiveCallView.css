@@ -3,7 +3,7 @@
   background-color: var(--bg-dashboard, #f3f7f8);
   display: flex;
   flex-direction: column;
-  min-height: calc(100vh - 120px);
+  flex: 1;
 }
 
 .dashboard-grid {
@@ -38,4 +38,26 @@
   .dashboard-grid {
     grid-template-columns: 1fr;
   }
+}
+
+.queue-strip-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.btn-start-call {
+  flex-shrink: 0;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--teal-accent, #0d9488);
+  background: transparent;
+  color: var(--teal-accent, #0d9488);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-start-call:hover {
+  background: var(--teal-accent, #0d9488);
+  color: #fff;
 }

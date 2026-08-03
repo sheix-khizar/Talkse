@@ -3,10 +3,8 @@ import sys
 from dotenv import load_dotenv
 from google import genai
 
-# Add parent directory to path so we can import modules if needed
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from rag.retriever import retrieve
+from app.services.rag.retriever import retrieve
 
 load_dotenv()
 
@@ -18,9 +16,9 @@ def get_client(api_key: str):
         _gemini_client = genai.Client(api_key=api_key)
     return _gemini_client
 
-def answer_question_streaming(question: str):
+def answer_question_streaming(question: str, tenant_id: str):
     api_key = os.getenv("GEMINI_API_KEY")
-    results = retrieve(question, api_key, top_k=2)
+    results = retrieve(tenant_id, question, api_key, top_k=2)
 
     context_block = "\n\n---\n\n".join(r["chunk"] for r in results)
 
@@ -65,7 +63,7 @@ def answer_question_streaming(question: str):
         yield buffer.strip()
 
 if __name__ == "__main__":
-    stream_gen = answer_question_streaming("What is Botox?")
+    stream_gen = answer_question_streaming("What is Botox?", "042")
     first_yield = next(stream_gen)
     print("Sources:", [s["url"] for s in first_yield])
     for chunk in stream_gen:

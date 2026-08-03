@@ -1,6 +1,7 @@
 groq
 google-genai
 deepgram-sdk
+elevenlabs
 psycopg2-binary
 python-dateutil
 requests
@@ -9,3 +10,5 @@ fastapi
 uvicorn[standard]
 pydantic-settings
 redis
+python-multipart
+clerk-backend-api

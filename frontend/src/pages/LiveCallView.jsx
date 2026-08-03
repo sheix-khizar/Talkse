@@ -11,16 +11,20 @@ import CallControls from '../components/CallControls';
 import ErrorBoundary from '../components/ErrorBoundary';
 import { useLiveCall } from '../hooks/useLiveCall';
 import { useTenant } from '../context/TenantContext';
-import { getActiveCalls, startCall } from '../api/calls';
+import { getActiveCalls, startNewCall } from '../api/calls';
+import { useAuth } from '@clerk/clerk-react';
 import './LiveCallView.css';
 
 export default function LiveCallView() {
   const { selectedTenant } = useTenant();
+  const { getToken } = useAuth();
   const [activeCallId, setActiveCallId] = useState(null);
   const [activeCalls, setActiveCalls] = useState([]);
+  const [loadError, setLoadError] = useState(null);
+  const [voiceTier, setVoiceTier] = useState('auto');
 
   const refreshCalls = () => {
-    getActiveCalls(selectedTenant.id).then((calls) => {
+    getActiveCalls(selectedTenant.id, getToken).then((calls) => {
       setActiveCalls(calls || []);
       if (calls && calls.length > 0) {
         if (!activeCallId || !calls.find(c => c.id === activeCallId)) {
@@ -34,38 +38,48 @@ export default function LiveCallView() {
 
   useEffect(() => {
     refreshCalls();
-  }, [selectedTenant.id]);
+    // Poll every 5s while view is open
+    const handle = setInterval(refreshCalls, 5000);
+    return () => clearInterval(handle);
+  }, [selectedTenant?.id]);
 
-  const handleNewCall = async () => {
+  const handleStartCall = async () => {
+    setStartError(null);
     try {
-      const result = await startCall();
-      if (result.call_id) {
-        setActiveCallId(result.call_id);
-        setTimeout(refreshCalls, 500); // Wait a bit for backend to process
-      }
+      const callId = await startNewCall(selectedTenant.id, voiceTier, getToken);
+      setActiveCallId(callId);
+      refreshCalls();
     } catch (err) {
-      console.error("Failed to start new call", err);
+      setStartError(err.message || 'Failed to start call');
     }
   };
-
-  const liveCall = useLiveCall(activeCallId);
   const confidenceScore = liveCall.nlu?.intent?.confidence || 100;
 
   return (
     <ErrorBoundary>
       <div className="talkse-app">
-        {/* Top Header Navigation */}
-        <NavBar />
 
         {/* Main Dashboard Workspace */}
         <main className="dashboard-content">
           {/* Multi-Call Queue Strip */}
-          <CallQueueStrip
-            calls={activeCalls}
-            activeCallId={activeCallId}
-            onSelectCall={setActiveCallId}
-            onNewCall={handleNewCall}
-          />
+          <div className="queue-strip-row">
+            <CallQueueStrip
+              calls={activeCalls}
+              activeCallId={activeCallId}
+              onSelectCall={setActiveCallId}
+              onNewCall={handleStartCall}
+            />
+            <select 
+              value={voiceTier} 
+              onChange={e => setVoiceTier(e.target.value)}
+              style={{ marginRight: '1rem', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+            >
+              <option value="auto">Voice: Tenant Default</option>
+              <option value="free">Voice: Standard (Deepgram)</option>
+              <option value="paid">Voice: Premium (ElevenLabs)</option>
+            </select>
+          </div>
+          {startError && <div className="connection-banner disconnected">{startError}</div>}
 
           {/* Connection status warning if disconnected, reconnecting or not found */}
           {liveCall.connectionState === 'RECONNECTING' && (
@@ -81,6 +95,22 @@ export default function LiveCallView() {
           {liveCall.connectionState === 'NOT_FOUND' && (
             <div className="connection-banner disconnected">
               ⚠️ Call session not found on server (4404).
+            </div>
+          )}
+
+          {loadError && (
+            <div className="connection-banner disconnected">⚠️ {loadError}</div>
+          )}
+
+          {liveCall.turnError && (
+            <div className="connection-banner disconnected" style={{backgroundColor: '#ffebee', color: '#c62828'}}>
+              ⚠️ Text Turn Failed: {liveCall.turnError}
+            </div>
+          )}
+
+          {liveCall.activePlan && (
+            <div className="connection-banner" style={{backgroundColor: '#e8f5e9', color: '#2e7d32'}}>
+              🎙️ Active pipeline: {liveCall.activePlan === 'paid' ? 'Premium (ElevenLabs)' : 'Standard (Deepgram)'}
             </div>
           )}
 

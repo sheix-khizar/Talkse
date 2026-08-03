@@ -1,21 +1,24 @@
-import React, { useState } from 'react';
+import React from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { Search, Bell, Calendar, ChevronDown, LogOut, Building } from 'lucide-react';
 import { useTenant } from '../context/TenantContext';
-import { useAuth } from '../auth/AuthContext';
+import { useAuth, useUser } from '@clerk/clerk-react';
 import './NavBar.css';
 
 export default function NavBar() {
-  const [activeTab, setActiveTab] = useState('Appointments');
+  const location = useLocation();
   const { selectedTenant, setSelectedTenant, tenants } = useTenant();
-  const { user, logout } = useAuth();
+  const { signOut } = useAuth();
+  const { user } = useUser();
 
   const tabs = [
-    { id: 'Overview', label: 'Overview' },
-    { id: 'Calls', label: 'Calls' },
-    { id: 'Calendar', label: 'Calendar' },
-    { id: 'Settings', label: 'Settings' },
-    { id: 'Dashboard', label: 'Dashboard' },
-    { id: 'Appointments', label: 'Appointments', isPill: true }
+    { id: 'overview', label: 'Overview', path: '/overview' },
+    { id: 'calls', label: 'Calls', path: '/calls' },
+    { id: 'calendar', label: 'Calendar', path: '/calendar' },
+    { id: 'settings', label: 'Settings', path: '/settings' },
+    { id: 'dashboard', label: 'Dashboard', path: '/dashboard' },
+    { id: 'appointments', label: 'Appointments', path: '/appointments', isPill: true },
+    { id: 'live', label: 'Live Call', path: '/' }
   ];
 
   return (
@@ -53,29 +56,30 @@ export default function NavBar() {
       {/* Center Navigation Tabs */}
       <nav className="navbar-tabs">
         {tabs.map((tab) => {
+          const isActive = location.pathname === tab.path;
           if (tab.isPill) {
             return (
-              <button
+              <Link
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`tab-pill ${activeTab === tab.id ? 'active' : ''}`}
+                to={tab.path}
+                className={`tab-pill ${isActive ? 'active' : ''}`}
               >
                 <div className="tab-pill-icon">
                   <Calendar size={16} />
                 </div>
                 <span>{tab.label}</span>
-              </button>
+              </Link>
             );
           }
           return (
-            <button
+            <Link
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`tab-link ${activeTab === tab.id ? 'active' : ''}`}
+              to={tab.path}
+              className={`tab-link ${isActive ? 'active' : ''}`}
             >
               {tab.label}
-              {activeTab === tab.id && <div className="active-indicator" />}
-            </button>
+              {isActive && <div className="active-indicator" />}
+            </Link>
           );
         })}
       </nav>
@@ -85,13 +89,13 @@ export default function NavBar() {
         {/* User profile */}
         <div className="user-profile">
           <img
-            src={user?.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80"}
+            src={user?.imageUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80"}
             alt="User avatar"
             className="user-avatar"
           />
           <div className="user-info">
             <span className="user-name">
-              {user?.name || 'Luninsitara'}
+              {user?.fullName || user?.primaryEmailAddress?.emailAddress || 'User'}
             </span>
             <span className="user-sub">{user?.role || 'ADMIN'}</span>
           </div>
@@ -110,7 +114,7 @@ export default function NavBar() {
         </div>
 
         {/* Logout Button */}
-        <button className="icon-button logout-btn" onClick={logout} title="Sign Out">
+        <button className="icon-button logout-btn" onClick={() => signOut()} title="Sign Out">
           <LogOut size={18} />
         </button>
       </div>

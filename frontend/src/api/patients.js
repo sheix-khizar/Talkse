@@ -1,27 +1,20 @@
-// Patient API client function
-export async function getPatientByPhone(tenantId, phone) {
-  try {
-    const response = await fetch(`/api/v1/tenants/${tenantId}/patients?phone=${encodeURIComponent(phone)}`);
-    if (!response.ok) {
-      throw new Error(`Patient fetch failed: ${response.statusText}`);
-    }
-    return await response.json();
-  } catch (err) {
-    console.warn("Falling back to default patient context:", err);
-    // Fallback default patient object matching schema
-    return {
-      id: "pat_99812",
-      name: "Sarah Jenkins",
-      avatar: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&q=80",
-      phone: phone || "555-123-4567",
-      customerType: "Recurring Customer",
-      category: "Lunnoeading",
-      previousAppointments: [
-        "Last Month - Botox",
-        "Last Month - Dr. Smith",
-        "Last Month - Botox Touch-up"
-      ],
-      notes: ""
-    };
+// Patient API client. No fallback data. A 404 means "no patient record
+// yet" and is treated as a normal, expected result (returns null) — any
+// other failure throws and the caller shows a real error.
+
+import { apiFetch } from './client';
+
+export async function getPatientByPhone(tenantId, phone, getToken) {
+  const response = await apiFetch(
+    `/api/v1/tenants/${tenantId}/patients?phone=${encodeURIComponent(phone)}`,
+    {},
+    getToken
+  );
+  if (response.status === 404) {
+    return null;
   }
+  if (!response.ok) {
+    throw new Error(`Patient fetch failed (${response.status})`);
+  }
+  return await response.json();
 }

@@ -95,10 +95,9 @@ def get_session(call_id: str) -> dict | None:
 
 def save_session(call_id: str, state: dict) -> None:
     if _redis_client:
-        _redis_client.setex(f"call:{call_id}", _SESSION_TTL_SECONDS, json.dumps(state))
+        _redis_client.setex(f"call:{call_id}", _SESSION_TTL_SECONDS, json.dumps(state, default=str))
     else:
         _mem_set(call_id, state)
-
 
 def list_active_sessions() -> list[tuple[str, dict]]:
     """Returns (call_id, state) pairs for all live sessions.
@@ -115,3 +114,4 @@ def list_active_sessions() -> list[tuple[str, dict]]:
                 results.append((call_id, json.loads(raw)))
         return results
     return _mem_list()
+

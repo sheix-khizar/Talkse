@@ -1,0 +1,10 @@
+README.md
+pyproject.toml
+app/main.py
+talkse_backend.egg-info/PKG-INFO
+talkse_backend.egg-info/SOURCES.txt
+talkse_backend.egg-info/dependency_links.txt
+talkse_backend.egg-info/top_level.txt
+tests/test_conversation.py
+tests/test_sprint1_contract.py
+tests/test_sprint2_tts.py
