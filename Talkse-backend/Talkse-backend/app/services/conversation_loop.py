@@ -191,7 +191,7 @@ def handle_turn(transcript: str, state: dict) -> dict:
             }
         else:
             # Unmatched specific treatment -> query RAG knowledge base
-            stream_gen = answer_question_streaming(transcript)
+            stream_gen = answer_question_streaming(transcript, tenant_id)
             return {
                 "reply_text": None,
                 "llm_time": llm_time,
@@ -203,7 +203,7 @@ def handle_turn(transcript: str, state: dict) -> dict:
 
     # 6. faq branch -> hands back the RAG streaming generator, caller synthesizes it
     if state["intent"] == "faq":
-        stream_gen = answer_question_streaming(transcript)
+        stream_gen = answer_question_streaming(transcript, tenant_id)
         return {"reply_text": None, "llm_time": llm_time, "routed": routed is not None,
                 "is_faq": True, "faq_stream": stream_gen, "terminal": False}
 

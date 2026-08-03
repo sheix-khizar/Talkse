@@ -1,6 +1,6 @@
+import os
 import hashlib
 from dotenv import load_dotenv
-
 
 from app.services.rag.clean import extract_clean_text
 from app.services.rag.chunk import chunk_text
@@ -9,7 +9,7 @@ from app.services import db
 
 load_dotenv()
 
-def ingest_folder(clean_text_dir: str, api_key: str):
+def ingest_folder(clean_text_dir: str, api_key: str, tenant_id: str = db.DEFAULT_TENANT_ID):
     if not os.path.exists(clean_text_dir):
         print(f"[Ingest] Directory not found: {clean_text_dir}")
         return
@@ -24,11 +24,11 @@ def ingest_folder(clean_text_dir: str, api_key: str):
                 text = f.read()
 
             content_hash = hashlib.sha256(text.encode()).hexdigest()
-            source_url = f"https://www.skinspirit.com/{category}/{fname.replace('.txt', '')}"
+            source_url = f"https://www.bloomaesthetics.com/{category}/{fname.replace('.txt', '')}"
             title = fname.replace(".txt", "").replace("_", " ").title()
 
-            existing_hash = db.get_document_hash(source_url)
-            doc_id = db.upsert_document(source_url, category, title, content_hash)
+            existing_hash = db.get_document_hash(tenant_id, source_url)
+            doc_id = db.upsert_document(tenant_id, source_url, category, title, content_hash)
 
             if existing_hash == content_hash:
                 print(f"[Ingest] {fname} unchanged — skipping re-embedding.")
@@ -36,7 +36,7 @@ def ingest_folder(clean_text_dir: str, api_key: str):
 
             for chunk in chunk_text(text):
                 vector = embed_document(chunk, api_key)
-                db.insert_chunk(doc_id, chunk, vector)
+                db.insert_chunk(tenant_id, doc_id, chunk, vector)
 
             print(f"[Ingest] {fname} -> {doc_id}")
 

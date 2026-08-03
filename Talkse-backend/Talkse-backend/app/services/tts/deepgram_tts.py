@@ -8,6 +8,7 @@ logger = logging.getLogger("talkse")
 
 class DeepgramTTS:
     name = "deepgram"
+    timeout_seconds = 3.0
 
     def synthesize(self, text: str, out_path: str) -> float:
         start_time = time.perf_counter()

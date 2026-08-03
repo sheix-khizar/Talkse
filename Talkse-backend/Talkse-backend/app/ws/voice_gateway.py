@@ -33,7 +33,7 @@ async def _synthesize_and_emit(websocket: WebSocket, call_id: str, text: str, st
     try:
         plan = state.get("plan", "free") if state else "free"
         task = asyncio.to_thread(synthesize_for_plan, plan, text, out_path)
-        elapsed, provider_used = await asyncio.wait_for(task, timeout=5.0)
+        elapsed, provider_used = await asyncio.wait_for(task, timeout=8.0)
         with open(out_path, "rb") as f:
             audio_bytes = f.read()
 
@@ -159,18 +159,25 @@ async def voice_ws(websocket: WebSocket, call_id: str):
                     state["transcript"] = []
                 state["transcript"].append({"role": "customer", "text": transcript})
 
+                import asyncio
                 try:
-                    # handle_turn() calls the LLM (Groq/Gemini, sync SDKs)
-                    # and the DB (psycopg2, sync) — must be offloaded or
-                    # it blocks every other concurrent call's audio.
-                    result = await asyncio.to_thread(handle_turn, transcript, state)
+                    result = await asyncio.wait_for(
+                        asyncio.to_thread(handle_turn, transcript, state),
+                        timeout=10.0
+                    )
+                except asyncio.TimeoutError:
+                    logger.error(f"[handle_turn] Timed out for call {call_id}; transferring to human.")
+                    state["status"] = "transferred_to_human"
+                    result = {
+                        "reply_text": "I'm having trouble processing that — let me transfer you to a team member.",
+                        "llm_time": 10.0, "routed": False, "is_faq": False, "faq_stream": None, "terminal": True
+                    }
                 except Exception as e:
                     logger.error(f"[Turn Error] handle_turn failed for call {call_id}: {e}")
                     result = {
                         "reply_text": "Sorry, I hit a snag processing that. Could you say that again?",
                         "terminal": False,
                     }
-
                 save_session(call_id, state)
 
                 await _emit(websocket, "state.changed", {
@@ -184,13 +191,37 @@ async def voice_ws(websocket: WebSocket, call_id: str):
                     }
                 })
 
-                reply_text = result.get("reply_text")
-                if reply_text:
-                    await _emit(websocket, "transcript.final", {
-                        "role": "ai",
-                        "text": reply_text,
-                    })
-                    await _synthesize_and_emit(websocket, call_id, reply_text, state)
+                if result.get("is_faq") and result.get("faq_stream"):
+                    stream_gen = result["faq_stream"]
+                    try:
+                        sources = next(stream_gen)
+                    except StopIteration:
+                        sources = []
+
+                    answer_parts = []
+                    for sentence in stream_gen:
+                        if sentence:
+                            answer_parts.append(sentence)
+                            await _emit(websocket, "transcript.final", {
+                                "role": "ai",
+                                "text": sentence,
+                            })
+                            await _synthesize_and_emit(websocket, call_id, sentence, state)
+
+                    if state is not None:
+                        state.setdefault("transcript", []).append({
+                            "role": "ai",
+                            "text": " ".join(answer_parts),
+                            "sources": sources,
+                        })
+                else:
+                    reply_text = result.get("reply_text")
+                    if reply_text:
+                        await _emit(websocket, "transcript.final", {
+                            "role": "ai",
+                            "text": reply_text,
+                        })
+                        await _synthesize_and_emit(websocket, call_id, reply_text, state)
 
                 await _emit(websocket, "state.changed", {
                     "status": state.get("status"),
@@ -215,10 +246,14 @@ async def voice_ws(websocket: WebSocket, call_id: str):
         logger.error(f"[Voice Gateway] Unhandled error on call {call_id}: {e}")
     finally:
         if transcriber:
+<<<<<<< HEAD
             try:
                 await asyncio.to_thread(transcriber.close)
             except Exception as e:
                 logger.warning(f"[Streaming STT] Error closing transcriber for {call_id}: {e}")
+=======
+            transcriber.close()
+>>>>>>> ab2940a (feat: complete implementation of performance engine optimizations, RAG streaming fixes, and repository cleanup)
         # Save call log if not already saved via /end endpoint
         state = get_session(call_id)
         if state and state.get("status") not in ("ended",):

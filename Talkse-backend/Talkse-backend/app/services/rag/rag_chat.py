@@ -5,6 +5,7 @@ from google import genai
 
 
 from app.services.rag.retriever import retrieve
+from app.services import db
 
 load_dotenv()
 
@@ -24,7 +25,7 @@ def answer_question_streaming(question: str, tenant_id: str | None = None):
     context_block = "\n\n---\n\n".join(r["chunk"] for r in results)
 
     system_prompt = (
-        "You are a phone receptionist for SkinSpirit, speaking OUT LOUD to a caller — "
+        "You are a phone receptionist for Bloom Aesthetics & Wellness Medspa, speaking OUT LOUD to a caller — "
         "not writing a webpage. Follow these rules strictly:\n"
         "1. Answer in 1-2 short spoken sentences MAX, like a real receptionist would on a call.\n"
         "2. NEVER read out bullet lists, multiple service names, or full menus. "

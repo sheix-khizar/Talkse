@@ -336,7 +336,12 @@ def init_rag_tables():
     conn = get_connection()
     try:
         with conn.cursor() as cur:
-            cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+            try:
+                cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+            except Exception as e:
+                logger.warning(f"[DB] Could not create pgvector extension: {e}")
+                conn.rollback()
+
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS documents (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

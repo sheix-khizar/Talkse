@@ -8,9 +8,10 @@ logger = logging.getLogger("talkse")
 
 class ElevenLabsTTS:
     name = "elevenlabs"
+    timeout_seconds = 3.5
 
     def __init__(self):
-        self._client = ElevenLabs(api_key=settings.elevenlabs_api_key)
+        self._client = ElevenLabs(api_key=settings.elevenlabs_api_key, timeout=self.timeout_seconds)
 
     def synthesize(self, text: str, out_path: str) -> float:
         start_time = time.perf_counter()

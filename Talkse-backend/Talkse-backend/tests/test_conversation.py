@@ -4,17 +4,13 @@ Golden/regression tests for deterministic, dependency-free logic.
 Run this BEFORE starting the FastAPI migration and again AFTER each step.
 If any of these fail post-migration, you changed behavior, not just location.
 """
-import sys
-import os
 import pytest
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../app/services")))
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from conversation_loop import next_missing_field, prompt_for_field
-from conversation_router import try_rule_based_route
-import booking_engine as be
-import clinic_config as config
-import conversation_loop as cl
+from app.services.conversation_loop import next_missing_field, prompt_for_field
+from app.services.conversation_router import try_rule_based_route
+from app.services import booking_engine as be
+from app.services import clinic_config as config
+from app.services import conversation_loop as cl
 
 # ---------- next_missing_field ----------
 
@@ -306,7 +302,7 @@ def test_service_check_unmatched_routes_to_rag(monkeypatch):
          "caller_name": None, "existing_appointment_ref": None, "confidence": 0.6}, 0.1
     ))
 
-    def fake_rag_stream(question):
+    def fake_rag_stream(question, *args, **kwargs):
         yield [{"title": "FAQ", "url": "https://example.test/faq"}]
         yield "We don't currently offer Ultherapy, but I can have someone call you back."
 
@@ -328,7 +324,7 @@ def test_explicit_faq_intent_routes_to_rag(monkeypatch):
          "caller_name": None, "existing_appointment_ref": None, "confidence": 0.9}, 0.1
     ))
 
-    def fake_rag_stream(question):
+    def fake_rag_stream(question, *args, **kwargs):
         yield [{"title": "Cancellation Policy", "url": "https://example.test/policy"}]
         yield "We require 24 hours notice to cancel or reschedule."
 
