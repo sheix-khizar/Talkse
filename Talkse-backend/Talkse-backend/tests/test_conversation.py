@@ -339,3 +339,22 @@ def test_explicit_faq_intent_routes_to_rag(monkeypatch):
 
     assert result["is_faq"] is True
     assert result["terminal"] is False
+
+
+def test_safety_net_prevents_looping_on_unresolved_intent(monkeypatch):
+    monkeypatch.setattr(cl, "extract_intent", lambda t: (
+        {"intent": "unclear", "service": None, "preferred_time": None,
+         "caller_name": None, "existing_appointment_ref": None, "confidence": 0.0}, 0.1
+    ))
+
+    def fake_rag_stream(*args, **kwargs):
+        yield [{"title": "Location", "url": "https://example.test/location"}]
+        yield "We are located at 123 Main Street."
+
+    monkeypatch.setattr(cl, "answer_question_streaming", fake_rag_stream)
+
+    state = base_state(intent=None, _awaiting_field="intent")
+    result = cl.handle_turn("what's your location?", state)
+
+    assert result["is_faq"] is True
+    assert result["terminal"] is False
