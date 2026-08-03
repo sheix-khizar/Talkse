@@ -1,3 +1,4 @@
+from pydantic import ConfigDict, Field
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
@@ -6,8 +7,14 @@ class Settings(BaseSettings):
     deepgram_api_key: str
     database_url: str
     redis_url: str = "redis://localhost:6379/0"
-    cors_origins: list[str] = ["http://localhost:5173"]  # React dev server
+    cors_origins: list[str] = [
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://localhost:3001"
+    ]
     llm_timeout_seconds: float = 4.0
+    clerk_secret_key: str = Field(..., env="CLERK_SECRET_KEY")
+    clerk_authorized_party: str = Field("http://localhost:5173", env="CLERK_AUTHORIZED_PARTY")
 
     # ElevenLabs — paid-tier TTS only. Optional so free-tier-only
     # deployments don't need to set it; router.py never reaches for it
@@ -16,7 +23,10 @@ class Settings(BaseSettings):
     elevenlabs_voice_id: str = ""
     elevenlabs_model_id: str = "eleven_turbo_v2_5"
 
-    class Config:
-        env_file = ".env"
+    model_config = ConfigDict(
+        env_file=".env",
+        extra="ignore",
+        case_sensitive=False,
+    )
 
 settings = Settings()

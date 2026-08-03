@@ -1,8 +1,10 @@
 import React, { useState, memo } from 'react';
+import { useAuth } from '@clerk/clerk-react';
 import { endCall } from '../api/callActions';
 import './CallControls.css';
 
 const CallControls = memo(function CallControls({ callId }) {
+  const { getToken } = useAuth();
   const [actionStatus, setActionStatus] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -11,7 +13,7 @@ const CallControls = memo(function CallControls({ callId }) {
     setLoading(true);
     setActionStatus(null);
     try {
-      const res = await endCall(callId);
+      const res = await endCall(callId, getToken);
       setActionStatus(res.message || 'Call ended.');
     } catch (err) {
       console.error(err);

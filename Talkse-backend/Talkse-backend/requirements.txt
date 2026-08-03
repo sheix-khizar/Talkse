@@ -2,6 +2,7 @@ groq
 google-genai
 deepgram-sdk
 elevenlabs
+fakeredis
 psycopg2-binary
 python-dateutil
 requests
@@ -11,4 +12,4 @@ uvicorn[standard]
 pydantic-settings
 redis
 python-multipart
-fakeredis
+clerk-backend-api

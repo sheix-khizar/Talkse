@@ -17,8 +17,8 @@ def _get_elevenlabs():
 
 def _chain_for_plan(plan: str) -> list:
     if plan == "paid":
-        return [_get_elevenlabs(), _deepgram]  # ElevenLabs first, Deepgram as fallback
-    return [_deepgram]  # free tier uses Deepgram
+        return [_get_elevenlabs(), _deepgram]  # ElevenLabs first, Deepgram as safety net
+    return [_deepgram]  # free tier never touches ElevenLabs, even as fallback
 
 
 def synthesize_for_plan(plan: str, text: str, out_path: str) -> tuple[float, str]:

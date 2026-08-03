@@ -94,14 +94,7 @@ async def voice_ws(websocket: WebSocket, call_id: str):
         })
 
     transcriber = StreamingTranscriber(sample_rate=16000)
-    try:
-        transcriber.start()
-    except Exception as e:
-        import logging
-        logging.getLogger("talkse").error(f"[WebSocket Error] Transcriber start failed: {e}")
-        await websocket.close(code=1011)
-        return
-
+    transcriber.start()
     transcriber.begin_turn()
     try:
         while True:
@@ -113,6 +106,10 @@ async def voice_ws(websocket: WebSocket, call_id: str):
                     "text": transcript,
                 })
 
+                if "transcript" not in state:
+                    state["transcript"] = []
+                state["transcript"].append({"role": "customer", "text": transcript})
+
                 result = handle_turn(transcript, state)
                 save_session(call_id, state)
 
@@ -121,31 +118,13 @@ async def voice_ws(websocket: WebSocket, call_id: str):
                     "isAiSpeaking": True,
                 })
 
-                if result.get("is_faq") and result.get("faq_stream"):
-                    try:
-                        stream = result["faq_stream"]
-                        _sources = next(stream, None)  # first yield is sources list
-                        # Speak each sentence as soon as it's ready, instead of
-                        # waiting for the whole answer to finish generating —
-                        # this is what actually cuts perceived latency on FAQ
-                        # answers, since the caller hears the first sentence
-                        # almost immediately.
-                        for item in stream:
-                            if isinstance(item, str) and item.strip():
-                                sentence = item.strip()
-                                await _emit(websocket, "transcript.final", {
-                                    "role": "ai",
-                                    "text": sentence,
-                                })
-                                await _synthesize_and_emit(websocket, call_id, sentence, state)
-                    except Exception as e:
-                        import logging
-                        logging.getLogger("talkse").error(f"[WebSocket RAG Error] {e}")
-                elif result.get("reply_text"):
+                if result.get("reply_text"):
                     await _emit(websocket, "transcript.final", {
                         "role": "ai",
                         "text": result["reply_text"],
                     })
+                    state["transcript"].append({"role": "ai", "text": result["reply_text"]})
+                    save_session(call_id, state)
                     await _synthesize_and_emit(websocket, call_id, result["reply_text"], state)
 
                 await _emit(websocket, "state.changed", {
@@ -163,3 +142,23 @@ async def voice_ws(websocket: WebSocket, call_id: str):
         pass
     finally:
         transcriber.close()
+        # Save call log if not already saved via /end endpoint
+        state = get_session(call_id)
+        if state and state.get("status") not in ("ended",):
+            state["status"] = "ended"
+            save_session(call_id, state)
+            tenant_id = state.get("tenant_id")
+            if tenant_id:
+                try:
+                    db.insert_call_log(
+                        tenant_id=tenant_id,
+                        call_id=call_id,
+                        caller_name=state.get("caller_name"),
+                        status=state["status"],
+                        started_at=None,
+                        transcript=state.get("transcript", []),
+                        booking_result=state.get("booking_result")
+                    )
+                except Exception as e:
+                    import logging
+                    logging.getLogger("talkse").error(f"Failed to save call log for {call_id}: {e}")

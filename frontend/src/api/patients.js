@@ -2,9 +2,13 @@
 // yet" and is treated as a normal, expected result (returns null) — any
 // other failure throws and the caller shows a real error.
 
-export async function getPatientByPhone(tenantId, phone) {
-  const response = await fetch(
-    `/api/v1/tenants/${tenantId}/patients?phone=${encodeURIComponent(phone)}`
+import { apiFetch } from './client';
+
+export async function getPatientByPhone(tenantId, phone, getToken) {
+  const response = await apiFetch(
+    `/api/v1/tenants/${tenantId}/patients?phone=${encodeURIComponent(phone)}`,
+    {},
+    getToken
   );
   if (response.status === 404) {
     return null;

@@ -1,8 +1,9 @@
-from fastapi import APIRouter, UploadFile, HTTPException
+from fastapi import APIRouter, UploadFile, HTTPException, Depends
 import time, uuid
 import logging
 
 logger = logging.getLogger("talkse")
+from app.core.security import get_tenant_id
 from app.session.store import new_session, get_session, save_session
 from app.services.conversation_loop import prompt_for_field, handle_turn
 from app.services import db
@@ -12,7 +13,7 @@ router = APIRouter(prefix="/api/v1/calls", tags=["calls"])
 
 @router.get("")
 @router.get("/")
-def list_active_calls():
+def list_active_calls(tenant_id: str = Depends(get_tenant_id)):
     """Returns currently active/waiting calls from Redis session state.
     NOTE: this is a placeholder scan — Redis KEYS is O(n) and not safe at
     production scale. Sprint 6 (multi-tenancy) should replace this with an
@@ -29,7 +30,7 @@ def list_active_calls():
             "duration": "--:--",  # no started_at timestamp tracked yet — see Sprint 6
         }
         for call_id, state in sessions
-        if state.get("status") not in ("ended", "done", "rejected", "emergency_transferred", "flagged_human_review")
+        if state.get("tenant_id") == tenant_id and state.get("status") not in ("ended", "done", "rejected", "emergency_transferred", "flagged_human_review")
     ]
 
 def resolve_call_plan(tenant_id: str, plan_override: str | None) -> str:
@@ -39,6 +40,8 @@ def resolve_call_plan(tenant_id: str, plan_override: str | None) -> str:
     from app.services import clinic_config as config
     if plan_override not in ("free", "paid"):
         plan_override = None
+    if tenant_id.startswith("clinic_"):
+        tenant_id = tenant_id.split("clinic_", 1)[1]
     return plan_override or config.get_plan_for_tenant(tenant_id)
 
 @router.post("")
@@ -142,4 +145,35 @@ def end_call(call_id: str):
         raise HTTPException(404, "call not found or expired")
     state["status"] = "ended"
     save_session(call_id, state)
+    
+    # Durably store the finished call
+    tenant_id = state.get("tenant_id")
+    if tenant_id:
+        try:
+            db.insert_call_log(
+                tenant_id=tenant_id,
+                call_id=call_id,
+                caller_name=state.get("caller_name"),
+                status=state["status"],
+                started_at=None, # Not tracked yet
+                transcript=state.get("transcript", []),
+                booking_result=state.get("booking_result")
+            )
+        except Exception as e:
+            logger.error(f"Failed to save call log for {call_id}: {e}")
+
     return {"status": "success", "message": "Call ended."}
+
+@router.get("/history")
+def get_call_history(limit: int = 50, offset: int = 0, tenant_id: str = Depends(get_tenant_id)):
+    """Paginated list of historical calls."""
+    calls = db.list_calls_for_tenant(tenant_id, limit, offset)
+    return calls
+
+@router.get("/{call_id}")
+def get_call_detail(call_id: str, tenant_id: str = Depends(get_tenant_id)):
+    """Fetch full details of a specific historical call."""
+    call = db.get_call_log(tenant_id, call_id)
+    if not call:
+        raise HTTPException(404, "Call not found")
+    return call

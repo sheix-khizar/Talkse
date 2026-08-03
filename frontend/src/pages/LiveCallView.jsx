@@ -12,10 +12,12 @@ import ErrorBoundary from '../components/ErrorBoundary';
 import { useLiveCall } from '../hooks/useLiveCall';
 import { useTenant } from '../context/TenantContext';
 import { getActiveCalls, startNewCall } from '../api/calls';
+import { useAuth } from '@clerk/clerk-react';
 import './LiveCallView.css';
 
 export default function LiveCallView() {
   const { selectedTenant } = useTenant();
+  const { getToken } = useAuth();
   const [activeCallId, setActiveCallId] = useState(null);
   const [activeCalls, setActiveCalls] = useState([]);
   const [loadError, setLoadError] = useState(null);
@@ -23,7 +25,7 @@ export default function LiveCallView() {
 
   useEffect(() => {
     let cancelled = false;
-    getActiveCalls()
+    getActiveCalls(getToken)
       .then((calls) => {
         if (cancelled) return;
         setLoadError(null);
@@ -45,7 +47,7 @@ export default function LiveCallView() {
   const handleStartCall = async () => {
     setStartError(null);
     try {
-      const { call_id } = await startNewCall(selectedTenant.id, voiceTier);
+      const { call_id } = await startNewCall(selectedTenant.id, voiceTier, getToken);
       setActiveCalls((prev) => [
         ...prev,
         { id: call_id, status: 'ACTIVE', callerName: 'New Call (Dashboard)', service: 'General Inquiry', duration: '00:00' },
@@ -56,14 +58,12 @@ export default function LiveCallView() {
     }
   };
 
-  const liveCall = useLiveCall(activeCallId);
+  const liveCall = useLiveCall(activeCallId, getToken);
   const confidenceScore = liveCall.nlu?.intent?.confidence || 100;
 
   return (
     <ErrorBoundary>
       <div className="talkse-app">
-        {/* Top Header Navigation */}
-        <NavBar />
 
         {/* Main Dashboard Workspace */}
         <main className="dashboard-content">
@@ -141,7 +141,6 @@ export default function LiveCallView() {
             <div className="grid-col col-center">
               <WaveformCenterpiece
                 isTalking={liveCall.isAiSpeaking}
-                isUserSpeaking={liveCall.isUserSpeaking}
                 intent={liveCall.nlu?.intent?.label || 'Schedule Appointment'}
                 isMicActive={liveCall.isMicActive}
                 onToggleMic={liveCall.toggleMicrophone}

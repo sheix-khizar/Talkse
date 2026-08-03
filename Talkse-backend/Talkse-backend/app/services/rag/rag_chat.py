@@ -16,7 +16,8 @@ def get_client(api_key: str):
         _gemini_client = genai.Client(api_key=api_key)
     return _gemini_client
 
-def answer_question_streaming(tenant_id: str, question: str):
+def answer_question_streaming(question: str, tenant_id: str | None = None):
+    tenant_id = tenant_id or db.DEFAULT_TENANT_ID
     api_key = os.getenv("GEMINI_API_KEY")
     results = retrieve(tenant_id, question, api_key, top_k=2)
 
@@ -26,16 +27,16 @@ def answer_question_streaming(tenant_id: str, question: str):
         "You are a phone receptionist for SkinSpirit, speaking OUT LOUD to a caller — "
         "not writing a webpage. Follow these rules strictly:\n"
         "1. Answer in 1-2 short spoken sentences MAX, like a real receptionist would on a call.\n"
-        "2. If the caller asks what services or treatments are offered, concisely list the main categories "
-        "(e.g., Botox and neuromodulators, dermal fillers, HydraFacials, chemical peels, and consultations) "
-        "and ask which one they'd like to book or learn about.\n"
-        "3. If the caller asks a yes/no question ('do you offer X'), answer directly and ask ONE natural follow-up question.\n"
-        "4. Only mention specific details (prices, durations, specific treatment names) "
+        "2. NEVER read out bullet lists, multiple service names, or full menus. "
+        "If the caller asks a yes/no question ('do you offer X'), just say yes or no, "
+        "then ask ONE natural follow-up question (e.g. what day works for them).\n"
+        "3. Only mention specific details (prices, durations, specific treatment names) "
         "if the caller explicitly asked for that detail.\n"
-        "5. Never say phrases like 'according to our website' — speak like a person, not a document reader.\n"
-        "6. Use ONLY the provided context for facts. If you don't know, say so briefly "
+        "4. Never say phrases like 'according to our website' or 'our services include' "
+        "followed by a list — speak like a person, not a document reader.\n"
+        "5. Use ONLY the provided context for facts. If you don't know, say so briefly "
         "and offer to have someone call them back.\n"
-        "7. Do not use markdown, bullet points, or numbered lists — this is plain spoken audio."
+        "6. Do not use markdown, bullet points, or numbered lists — this is spoken audio."
     )
 
     client = get_client(api_key)
@@ -63,7 +64,7 @@ def answer_question_streaming(tenant_id: str, question: str):
         yield buffer.strip()
 
 if __name__ == "__main__":
-    stream_gen = answer_question_streaming("demo_tenant", "What is Botox?")
+    stream_gen = answer_question_streaming("What is Botox?", "042")
     first_yield = next(stream_gen)
     print("Sources:", [s["url"] for s in first_yield])
     for chunk in stream_gen:

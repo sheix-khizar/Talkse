@@ -1,9 +1,11 @@
 import React, { useState, useEffect, memo } from 'react';
 import { MoreHorizontal, Edit3, CheckCircle, Calendar } from 'lucide-react';
+import { useAuth } from '@clerk/clerk-react';
 import { createAppointment } from '../api/bookings';
 import './NluBookingPanel.css';
 
 const NluBookingPanel = memo(function NluBookingPanel({ nlu, tenantId = '042' }) {
+  const { getToken } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [isBooking, setIsBooking] = useState(false);
   const [bookingSuccess, setBookingSuccess] = useState(null);
@@ -39,7 +41,7 @@ const NluBookingPanel = memo(function NluBookingPanel({ nlu, tenantId = '042' })
         provider: slots.provider,
         time: slots.time,
         service: slots.service
-      });
+      }, getToken);
       setBookingSuccess(res.message || 'Appointment confirmed!');
       setIsEditing(false);
     } catch (err) {

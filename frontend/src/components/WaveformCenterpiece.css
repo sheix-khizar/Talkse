@@ -107,22 +107,6 @@
   animation: wave-pulse 1.2s ease-in-out infinite alternate;
 }
 
-.waveform-spectrum.paused .bar {
-  animation-play-state: paused;
-  opacity: 0.35;
-}
-
-.waveform-spectrum.animating .bar {
-  animation-play-state: running;
-}
-
-.glass-cloud-wrapper.is-listening {
-  box-shadow:
-    0 20px 40px rgba(45, 212, 191, 0.25),
-    0 8px 16px rgba(45, 212, 191, 0.12),
-    inset 0 0 30px rgba(255, 255, 255, 0.9);
-}
-
 .bar-1 { height: 30px; animation-delay: 0.1s; }
 .bar-2 { height: 55px; animation-delay: 0.3s; }
 .bar-3 { height: 80px; animation-delay: 0.2s; }

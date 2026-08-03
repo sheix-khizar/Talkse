@@ -24,6 +24,54 @@ def get_tts_usage(tenant_id: str):
     finally:
         db.release_connection(conn)
 
+@router.get("/stats")
+def get_stats(tenant_id: str):
+    return db.get_tenant_stats(tenant_id)
+
+@router.get("/config")
+def get_tenant_config(tenant_id: str):
+    """Returns the full clinic configuration including providers and services."""
+    clinic = db.get_clinic_row(tenant_id)
+    if not clinic:
+        raise HTTPException(404, "Clinic not found")
+    
+    providers = db.list_providers_for_tenant(tenant_id)
+    services = db.list_services_for_tenant(tenant_id)
+    
+    return {
+        "clinic": clinic,
+        "providers": providers,
+        "services": services
+    }
+
+from pydantic import BaseModel
+
+class PlanUpdateRequest(BaseModel):
+    plan: str
+
+@router.put("/plan")
+def update_tenant_plan(tenant_id: str, request: PlanUpdateRequest):
+    """Updates the tenant's active plan (e.g., 'free' vs 'paid')."""
+    if request.plan not in ("free", "paid"):
+        raise HTTPException(422, "Plan must be 'free' or 'paid'")
+        
+    clinic = db.get_clinic_row(tenant_id)
+    if not clinic:
+        raise HTTPException(404, "Clinic not found")
+        
+    db.upsert_clinic(
+        tenant_id=tenant_id,
+        name=clinic["name"],
+        timezone=clinic["timezone"],
+        hours=clinic["hours"],
+        plan=request.plan,
+        clinic_data=clinic["clinic_data"]
+    )
+    # Clear the cache in clinic_config so the new plan is fetched next time
+    config.refresh_tenant_cache(tenant_id)
+    
+    return {"status": "success", "plan": request.plan}
+
 
 @router.get("/patients")
 def get_patient(tenant_id: str, phone: str = Query(...)):

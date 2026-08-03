@@ -93,14 +93,8 @@ def merge_state(current_state: dict, new_extracted: dict) -> dict:
     if new_intent == "book_appointment":
         new_intent = "book"
 
-    # Only transition intent to 'book' if there is at least one entity extracted or explicitly intended
-    if new_intent in ("reschedule", "cancel", "faq", "service_check") and current_state.get("intent") in (None, "unclear"):
+    if new_intent in ("book", "reschedule", "cancel", "faq", "service_check") and current_state.get("intent") in (None, "unclear"):
         current_state["intent"] = new_intent
-    elif new_intent == "book":
-        # Ensure we don't lock state to 'book' on ambiguous questions that extracted no entities
-        has_entities = any(new_extracted.get(f) for f in ("service", "preferred_time", "caller_name"))
-        if has_entities or current_state.get("intent") in (None, "unclear"):
-            current_state["intent"] = "book"
 
     for field in ("service", "preferred_time", "caller_name", "existing_appointment_ref"):
         val = new_extracted.get(field)
@@ -127,29 +121,7 @@ def extract_intent(transcript: str) -> tuple[dict, float]:
         "Rules:\n"
         "- Set 'intent' to 'book', 'reschedule', 'cancel', 'service_check', 'faq', or 'unclear'.\n"
         "- 'service_check' = caller is asking whether you offer something, wants to move toward booking.\n"
-        "- 'faq' = caller wants general information that is NOT about booking, rescheduling, or "
-        "cancelling one specific appointment right now. Classify a question as 'faq' if it falls into "
-        "ANY of these categories (this list is representative, not exhaustive — use your judgment for "
-        "anything similar in spirit):\n"
-        "  * Location: address, directions, which floor/suite, cross streets, landmarks nearby\n"
-        "  * Parking: availability, cost, validation, garage vs. street\n"
-        "  * Hours: days open, opening/closing times, holiday hours, walk-in availability\n"
-        "  * Contact info: phone number, email, website, social media\n"
-        "  * Pricing and payment: cost of a treatment, payment methods, financing, insurance coverage, deposits\n"
-        "  * Policies: cancellation/no-show/late policy, rescheduling rules, minimum age, ID requirements\n"
-        "  * Treatment info: what a service involves, recovery time, aftercare, side effects, how long it lasts, how many sessions needed\n"
-        "  * Staff and doctors: names, credentials, specialties, which days a provider works\n"
-        "  * New patient process: what to bring, forms needed, consultation requirements\n"
-        "  * Promotions: memberships, loyalty programs, gift cards, current specials\n"
-        "  * Accessibility: wheelchair access, language support, accommodations\n"
-        "  * Anything else that is clearly a question about the clinic rather than an attempt to book/reschedule/cancel a specific appointment right now\n"
-        "- If the transcript is phrased as a question (contains words like 'what', 'where', 'when', "
-        "'who', 'how', 'do you', 'can i', 'is there', or ends in a question mark) and it is not clearly "
-        "about booking, rescheduling, or cancelling a specific appointment, classify it as 'faq' — do NOT "
-        "return 'unclear' just because the exact topic isn't in the list above. The list above is meant "
-        "to be broad; when in doubt between 'faq' and 'unclear' for a real question, choose 'faq'.\n"
-        "- Only use 'unclear' when the transcript is genuinely unintelligible, silence, background noise, "
-        "or something with no discernible question or request at all.\n"
+        "- 'faq' = caller wants general info (policies, recovery, pricing, hours) with no booking intent yet.\n"
         "- ONLY fill in fields the caller explicitly stated in this transcript turn.\n"
         "- Leave unstated fields as null (do NOT invent or guess values)."
     )
@@ -223,9 +195,12 @@ def extract_intent(transcript: str) -> tuple[dict, float]:
 def synthesize(reply_text: str, out_path: str = "reply.wav") -> float:
     """Synthesizes speech from reply_text using Deepgram Aura (aura-asteria-en)."""
     start_time = time.perf_counter()
-
-    client = get_deepgram_client()  # reuse the cached client instead of making a new one every call
-
+    api_key = os.getenv("DEEPGRAM_API_KEY")
+    if not api_key:
+        raise ValueError("DEEPGRAM_API_KEY missing in environment variables.")
+    
+    client = DeepgramClient(api_key=api_key)
+    
     audio_stream = client.speak.v1.audio.generate(
         text=reply_text,
         model="aura-asteria-en"

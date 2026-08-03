@@ -9,13 +9,11 @@ logger = logging.getLogger("talkse")
 class DeepgramTTS:
     name = "deepgram"
 
-    def __init__(self):
-        self._client = DeepgramClient(api_key=settings.deepgram_api_key)
-
     def synthesize(self, text: str, out_path: str) -> float:
         start_time = time.perf_counter()
+        client = DeepgramClient(api_key=settings.deepgram_api_key)
 
-        audio_stream = self._client.speak.v1.audio.generate(
+        audio_stream = client.speak.v1.audio.generate(
             text=text,
             model="aura-asteria-en"
         )

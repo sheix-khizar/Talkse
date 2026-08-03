@@ -23,18 +23,12 @@ def extract_clean_text(html: str) -> str:
 
 if __name__ == "__main__":
     import os
-    import sys
-
-    if len(sys.argv) < 2:
-        print("[Clean] Usage: python -m app.services.rag.clean <tenant_id>")
-        sys.exit(1)
-
-    tenant_id = sys.argv[1]
-    RAW_DIR = f"data/{tenant_id}/raw_html"
-    CLEAN_DIR = f"data/{tenant_id}/clean_text"
-
+    RAW_DIR = "data/raw_html"
+    CLEAN_DIR = "data/clean_text"
+    
     if not os.path.exists(RAW_DIR):
         print(f"Directory {RAW_DIR} not found. Please run scrape.py first.")
+        import sys
         sys.exit(1)
         
     for category in os.listdir(RAW_DIR):

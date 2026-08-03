@@ -5,13 +5,14 @@ def retrieve(tenant_id: str, query: str, api_key: str, top_k: int = 5) -> list[d
     query_vec = embed_query(query, api_key)
     conn = db.get_connection()
     try:
+        db.set_session_tenant(conn, tenant_id)
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT dc.chunk_text, d.title, d.source_url,
                        1 - (dc.embedding <=> %s::vector) AS similarity
                 FROM document_chunks dc
                 JOIN documents d ON d.id = dc.document_id
-                WHERE d.tenant_id = %s
+                WHERE dc.tenant_id = %s
                 ORDER BY dc.embedding <=> %s::vector
                 LIMIT %s;
             """, (query_vec, tenant_id, query_vec, top_k))
