@@ -2,12 +2,17 @@ import React from 'react';
 import { PhoneCall, Clock } from 'lucide-react';
 import './CallQueueStrip.css';
 
-export default function CallQueueStrip({ calls = [], activeCallId, onSelectCall }) {
+export default function CallQueueStrip({ calls = [], activeCallId, onSelectCall, onNewCall }) {
   return (
     <div className="call-queue-strip">
       <div className="queue-label">
         <PhoneCall size={14} />
         <span>LIVE CALL QUEUE ({calls.length})</span>
+        {onNewCall && (
+          <button className="simulate-call-btn" onClick={onNewCall} style={{ marginLeft: '10px', fontSize: '10px', padding: '2px 8px', borderRadius: '4px', background: 'var(--brand-primary)', color: 'white', border: 'none', cursor: 'pointer' }}>
+            + New Call
+          </button>
+        )}
       </div>
 
       <div className="queue-chips-container">

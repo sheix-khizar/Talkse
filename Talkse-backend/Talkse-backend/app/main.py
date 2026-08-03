@@ -3,6 +3,11 @@ import sys
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+from dotenv import load_dotenv
+
+# Load environment variables from .env file so os.getenv works for API keys
+load_dotenv()
+
 
 # Make sure we can import app modules properly
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

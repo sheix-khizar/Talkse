@@ -46,7 +46,11 @@ export function useLiveCall(callId = null) {
     let isUnmounted = false;
 
     const connectWebSocket = () => {
-      const wsUrl = `ws://${window.location.hostname}:8000/ws/calls/${callId}`;
+      // Use the current page's port so the connection routes through Vite's
+      // /ws proxy (configured in vite.config.js) → ws://127.0.0.1:8000
+      const wsPort = window.location.port || (window.location.protocol === 'https:' ? '443' : '80');
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${wsProtocol}//${window.location.hostname}:${wsPort}/ws/calls/${callId}`;
       setConnectionState('CONNECTING');
 
       try {

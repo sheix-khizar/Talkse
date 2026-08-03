@@ -1,7 +1,7 @@
 // Appointment Booking API client
 export async function createAppointment(tenantId, payload) {
   try {
-    const response = await fetch(`/api/v1/tenants/${tenantId}/appointments`, {
+    const response = await fetch(`/api/v1/appointments`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'

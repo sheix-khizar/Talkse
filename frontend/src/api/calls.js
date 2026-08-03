@@ -32,3 +32,18 @@ export async function getActiveCalls(tenantId = '042') {
     ];
   }
 }
+
+export async function startCall() {
+  try {
+    const res = await fetch(`/api/v1/calls/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+    if (!res.ok) throw new Error("Failed to start call");
+    return await res.json();
+  } catch (err) {
+    console.warn("Failed to start call via API:", err);
+    throw err;
+  }
+}

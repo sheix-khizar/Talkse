@@ -11,7 +11,7 @@ import CallControls from '../components/CallControls';
 import ErrorBoundary from '../components/ErrorBoundary';
 import { useLiveCall } from '../hooks/useLiveCall';
 import { useTenant } from '../context/TenantContext';
-import { getActiveCalls } from '../api/calls';
+import { getActiveCalls, startCall } from '../api/calls';
 import './LiveCallView.css';
 
 export default function LiveCallView() {
@@ -19,16 +19,34 @@ export default function LiveCallView() {
   const [activeCallId, setActiveCallId] = useState(null);
   const [activeCalls, setActiveCalls] = useState([]);
 
-  useEffect(() => {
+  const refreshCalls = () => {
     getActiveCalls(selectedTenant.id).then((calls) => {
       setActiveCalls(calls || []);
       if (calls && calls.length > 0) {
-        setActiveCallId(calls[0].id);
+        if (!activeCallId || !calls.find(c => c.id === activeCallId)) {
+          setActiveCallId(calls[0].id);
+        }
       } else {
         setActiveCallId(null);
       }
     });
+  };
+
+  useEffect(() => {
+    refreshCalls();
   }, [selectedTenant.id]);
+
+  const handleNewCall = async () => {
+    try {
+      const result = await startCall();
+      if (result.call_id) {
+        setActiveCallId(result.call_id);
+        setTimeout(refreshCalls, 500); // Wait a bit for backend to process
+      }
+    } catch (err) {
+      console.error("Failed to start new call", err);
+    }
+  };
 
   const liveCall = useLiveCall(activeCallId);
   const confidenceScore = liveCall.nlu?.intent?.confidence || 100;
@@ -46,6 +64,7 @@ export default function LiveCallView() {
             calls={activeCalls}
             activeCallId={activeCallId}
             onSelectCall={setActiveCallId}
+            onNewCall={handleNewCall}
           />
 
           {/* Connection status warning if disconnected, reconnecting or not found */}
