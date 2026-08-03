@@ -1,0 +1,434 @@
+import { useState, useEffect, useRef } from 'react';
+import { getPatientByPhone } from '../api/patients';
+
+export function useLiveCall(callId = null) {
+  const [status, setStatus] = useState('ACTIVE');
+  const [durationSeconds, setDurationSeconds] = useState(0);
+  const [transcript, setTranscript] = useState([]);
+  const [patient, setPatient] = useState(null);
+  const [nlu, setNlu] = useState(null);
+  const [isAiSpeaking, setIsAiSpeaking] = useState(false);
+  const [activePlan, setActivePlan] = useState(null);
+  const [connectionState, setConnectionState] = useState(callId ? 'CONNECTING' : 'DISCONNECTED');
+  const [turnError, setTurnError] = useState(null);
+
+  const wsRef = useRef(null);
+  const timerRef = useRef(null);
+  const reconnectAttemptsRef = useRef(0);
+  const maxReconnectAttempts = 5;
+
+  // Drives mic gating specifically. Set true the instant local audio playback
+  // starts, false only after it actually ends (plus a short grace period).
+  const isSpeakerActiveRef = useRef(false);
+  const activeAudioRef = useRef(null);
+
+  // Format seconds to mm:ss
+  const formatDuration = (totalSec) => {
+    const mins = Math.floor(totalSec / 60);
+    const secs = totalSec % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Timer loop for call duration
+  useEffect(() => {
+    if (status === 'ACTIVE') {
+      timerRef.current = setInterval(() => {
+        setDurationSeconds((prev) => prev + 1);
+      }, 1000);
+    } else {
+      clearInterval(timerRef.current);
+    }
+    return () => clearInterval(timerRef.current);
+  }, [status]);
+
+  // WebSocket lifecycle with exponential backoff
+  useEffect(() => {
+    if (!callId) {
+      setConnectionState('DISCONNECTED');
+      return;
+    }
+
+    let socket;
+    let isUnmounted = false;
+
+    const connectWebSocket = () => {
+      const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+      const wsUrl = `${proto}://${window.location.host}/ws/calls/${callId}`;
+      setConnectionState('CONNECTING');
+
+      try {
+        socket = new WebSocket(wsUrl);
+        wsRef.current = socket;
+
+        socket.onopen = () => {
+          if (isUnmounted) return;
+          console.log(`WebSocket connected to ${wsUrl}`);
+          setConnectionState('CONNECTED');
+          reconnectAttemptsRef.current = 0;
+        };
+
+        socket.onmessage = (event) => {
+          if (isUnmounted) return;
+          try {
+            const payload = JSON.parse(event.data);
+            handleSocketEvent(payload);
+          } catch (err) {
+            console.error("Error parsing WebSocket message:", err);
+          }
+        };
+
+        socket.onerror = () => {
+          if (isUnmounted) return;
+          console.error(`WebSocket connection error for call ${callId}`);
+          setConnectionState('ERROR');
+        };
+
+        socket.onclose = (event) => {
+          if (isUnmounted) return;
+          console.log("WebSocket closed", event.code);
+
+          if (event.code === 4404) {
+            // Backend closed because this call_id doesn't exist in
+            // Redis session state — not a transient network issue,
+            // retrying will never succeed. Surface it instead of looping.
+            console.warn(`Call ${callId} not found on backend (4404) — not reconnecting.`);
+            setConnectionState('NOT_FOUND');
+            return;
+          }
+
+          if (reconnectAttemptsRef.current < maxReconnectAttempts) {
+            setConnectionState('RECONNECTING');
+            reconnectAttemptsRef.current += 1;
+            const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 10000);
+            console.log(`Reconnecting in ${delay}ms (Attempt ${reconnectAttemptsRef.current})...`);
+            setTimeout(() => {
+              if (!isUnmounted) connectWebSocket();
+            }, delay);
+          } else {
+            setConnectionState('DISCONNECTED');
+          }
+        };
+      } catch (e) {
+        console.error("WebSocket init error:", e);
+        setConnectionState('ERROR');
+      }
+    };
+
+    connectWebSocket();
+
+    return () => {
+      isUnmounted = true;
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.close();
+      }
+    };
+  }, [callId]);
+
+  // Handle incoming socket events
+  const handleSocketEvent = (event) => {
+    const { type, data } = event;
+
+    switch (type) {
+      case 'call.started':
+        setStatus('ACTIVE');
+        if (data?.callerPhone) {
+          getPatientByPhone('tenant_042', data.callerPhone).then(setPatient);
+        }
+        if (data?.plan) {
+          setActivePlan(data.plan);
+        }
+        break;
+
+      case 'transcript.partial':
+        setTranscript((prev) => {
+          const lastMsg = prev[prev.length - 1];
+          if (lastMsg && lastMsg.isPartial && lastMsg.role === data.role) {
+            const updated = [...prev];
+            updated[updated.length - 1] = {
+              ...lastMsg,
+              text: data.text
+            };
+            return updated;
+          } else {
+            return [
+              ...prev,
+              {
+                id: `msg_${Date.now()}`,
+                speaker: data.role === 'ai' ? 'AI Receptionist' : 'Customer',
+                role: data.role,
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                text: data.text,
+                isPartial: true
+              }
+            ];
+          }
+        });
+        break;
+
+      case 'transcript.final':
+        setTranscript((prev) => {
+          const filtered = prev.filter((m) => !m.isPartial);
+          return [
+            ...filtered,
+            {
+              id: `msg_${Date.now()}`,
+              speaker: data.role === 'ai' ? 'AI Receptionist' : 'Customer',
+              role: data.role,
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              text: data.text,
+              isPartial: false
+            }
+          ];
+        });
+        setIsAiSpeaking(data.role === 'ai');
+        break;
+
+      case 'state.changed':
+        if (data?.status) setStatus(data.status);
+        if (data?.isAiSpeaking !== undefined) setIsAiSpeaking(data.isAiSpeaking);
+        if (data?.nlu) setNlu((prev) => ({ ...prev, ...data.nlu }));
+        break;
+
+      case 'audio.chunk':
+        playAudioChunk(data.audio_base64);
+        break;
+
+      case 'call.ended':
+        setStatus('ENDED');
+        setIsAiSpeaking(false);
+        break;
+
+      default:
+        break;
+    }
+  };
+
+  const [isMicActive, setIsMicActive] = useState(false);
+  const audioContextRef = useRef(null);
+  const mediaStreamRef = useRef(null);
+  const processorRef = useRef(null);
+
+  const isUserSpeakingRef = useRef(false);
+  const [isUserSpeaking, setIsUserSpeaking] = useState(false);
+  const lastVoiceAtRef = useRef(0);
+
+  const SPEECH_RMS_THRESHOLD = 0.02;
+  const SPEECH_HANGOVER_MS = 300;
+  const SPEAKER_ECHO_GRACE_MS = 100;
+
+  const startMicrophone = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          sampleRate: 16000,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        }
+      });
+      mediaStreamRef.current = stream;
+
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+      audioContextRef.current = audioCtx;
+
+      const source = audioCtx.createMediaStreamSource(stream);
+      const processor = audioCtx.createScriptProcessor(4096, 1, 1);
+      processorRef.current = processor;
+
+      processor.onaudioprocess = (e) => {
+        const inputData = e.inputBuffer.getChannelData(0);
+
+        // --- Voice-activity detection (drives the waveform UI only) ---
+        if (isSpeakerActiveRef.current) {
+          // AI is talking — force "user speaking" off immediately
+          if (isUserSpeakingRef.current) {
+            isUserSpeakingRef.current = false;
+            setIsUserSpeaking(false);
+          }
+        } else {
+          let sumSquares = 0;
+          for (let i = 0; i < inputData.length; i++) {
+            sumSquares += inputData[i] * inputData[i];
+          }
+          const rms = Math.sqrt(sumSquares / inputData.length);
+          const now = performance.now();
+
+          if (rms > SPEECH_RMS_THRESHOLD) {
+            lastVoiceAtRef.current = now;
+            if (!isUserSpeakingRef.current) {
+              isUserSpeakingRef.current = true;
+              setIsUserSpeaking(true);
+            }
+          } else if (
+            isUserSpeakingRef.current &&
+            now - lastVoiceAtRef.current > SPEECH_HANGOVER_MS
+          ) {
+            isUserSpeakingRef.current = false;
+            setIsUserSpeaking(false);
+          }
+        }
+
+        // --- Mic-send logic ---
+        if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+        if (isSpeakerActiveRef.current) return;
+
+        const pcm16 = new Int16Array(inputData.length);
+        for (let i = 0; i < inputData.length; i++) {
+          const s = Math.max(-1, Math.min(1, inputData[i]));
+          pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+        }
+        wsRef.current.send(pcm16.buffer);
+      };
+
+      source.connect(processor);
+      processor.connect(audioCtx.destination);
+      setIsMicActive(true);
+    } catch (err) {
+      console.error("Microphone access failed:", err);
+    }
+  };
+
+  const stopMicrophone = () => {
+    if (processorRef.current) {
+      processorRef.current.disconnect();
+      processorRef.current = null;
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close();
+      audioContextRef.current = null;
+    }
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+      mediaStreamRef.current = null;
+    }
+    isUserSpeakingRef.current = false;
+    setIsUserSpeaking(false);
+    setIsMicActive(false);
+  };
+
+  const toggleMicrophone = () => {
+    if (isMicActive) {
+      stopMicrophone();
+    } else {
+      startMicrophone();
+    }
+  };
+
+  const sendTextTurn = async (text) => {
+    if (!callId || !text.trim()) return;
+    setTurnError(null);
+    try {
+      setTranscript((prev) => [
+        ...prev,
+        {
+          id: `msg_${Date.now()}`,
+          speaker: 'Customer',
+          role: 'customer',
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          text: text,
+          isPartial: false
+        }
+      ]);
+
+      const res = await fetch(`/api/v1/calls/${callId}/turn`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.reply_text) {
+          setTranscript((prev) => [
+            ...prev,
+            {
+              id: `msg_${Date.now() + 1}`,
+              speaker: 'AI Receptionist',
+              role: 'ai',
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              text: data.reply_text,
+              isPartial: false
+            }
+          ]);
+          setIsAiSpeaking(true);
+          if (data.audio_base64) {
+            playAudioChunk(data.audio_base64);
+          }
+        }
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || `Backend error: ${res.status} ${res.statusText}`);
+      }
+    } catch (err) {
+      console.error("Failed to send text turn:", err);
+      setTurnError(err.message);
+    }
+  };
+
+  const playAudioChunk = (base64Audio) => {
+    try {
+      const binary = atob(base64Audio);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      const blob = new Blob([bytes], { type: 'audio/wav' });
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+
+      if (activeAudioRef.current) {
+        try { activeAudioRef.current.pause(); } catch (e) { }
+      }
+      activeAudioRef.current = audio;
+
+      isSpeakerActiveRef.current = true;
+
+      const releaseSpeakerLock = () => {
+        setTimeout(() => {
+          if (activeAudioRef.current === audio) {
+            isSpeakerActiveRef.current = false;
+          }
+        }, SPEAKER_ECHO_GRACE_MS);
+      };
+
+      audio.onended = () => {
+        URL.revokeObjectURL(url);
+        releaseSpeakerLock();
+      };
+      audio.onerror = () => {
+        URL.revokeObjectURL(url);
+        if (activeAudioRef.current === audio) {
+          isSpeakerActiveRef.current = false;
+        }
+      };
+
+      audio.play().catch((err) => {
+        console.warn('Audio playback blocked:', err);
+        if (activeAudioRef.current === audio) {
+          isSpeakerActiveRef.current = false;
+        }
+      });
+    } catch (err) {
+      console.error('Failed to play audio chunk:', err);
+      isSpeakerActiveRef.current = false;
+    }
+  };
+
+  return {
+    callId,
+    status,
+    duration: formatDuration(durationSeconds),
+    transcript,
+    patient,
+    nlu,
+    isAiSpeaking,
+    isUserSpeaking,
+    connectionState,
+    isMicActive,
+    toggleMicrophone,
+    startMicrophone,
+    stopMicrophone,
+    sendTextTurn,
+    turnError,
+    activePlan
+  };
+}

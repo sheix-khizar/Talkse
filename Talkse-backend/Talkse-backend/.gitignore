@@ -1,0 +1,10 @@
+.env
+__pycache__/
+*.pyc
+venv/
+*.wav
+*.mp3
+turns/
+data/
+.venv/
+node_modules/
