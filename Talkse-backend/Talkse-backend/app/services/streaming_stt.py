@@ -87,6 +87,7 @@ class StreamingTranscriber:
             if is_final:
                 if text:
                     self._final_transcript_parts.append(text)
+                    self._turn_complete = True
                 self._latest_interim = ""
                 if speech_final:
                     self._turn_complete = True

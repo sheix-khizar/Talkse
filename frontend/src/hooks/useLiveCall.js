@@ -27,7 +27,7 @@ export function useLiveCall(callId = null, getToken) {
 
   // Timer loop for call duration
   useEffect(() => {
-    if (status === 'ACTIVE') {
+    if (status && status !== 'ENDED' && status !== 'DISCONNECTED' && status !== 'NOT_FOUND') {
       timerRef.current = setInterval(() => {
         setDurationSeconds((prev) => prev + 1);
       }, 1000);

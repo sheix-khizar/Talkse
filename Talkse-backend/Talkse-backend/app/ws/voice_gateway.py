@@ -6,6 +6,7 @@ from app.services.streaming_stt import StreamingTranscriber
 from app.services.conversation_loop import handle_turn
 from app.session.store import get_session, save_session
 from app.services.tts.router import synthesize_for_plan_bytes
+from app.services.ai_clients import transcribe_bytes
 from app.services import db
 
 router = APIRouter()
@@ -109,6 +110,7 @@ async def voice_ws(websocket: WebSocket, call_id: str):
         })
 
     transcriber = await _start_transcriber()
+    pcm_buffer = bytearray()
 
     try:
         while True:
@@ -127,10 +129,16 @@ async def voice_ws(websocket: WebSocket, call_id: str):
                         logger.warning(f"[Streaming STT Feed Error] {err}")
                         transcript = None
                 else:
-                    # STT never came up for this call. Don't silently eat
-                    # every frame forever — tell the frontend once so it
-                    # can surface a real error instead of looking "stuck".
-                    transcript = None
+                    pcm_buffer.extend(data_bytes)
+                    # When ~1.5s of audio (48000 bytes @ 16kHz 16-bit PCM) accumulates, transcribe via Groq
+                    if len(pcm_buffer) >= 48000:
+                        raw_audio = bytes(pcm_buffer)
+                        pcm_buffer.clear()
+                        transcript, _ = await asyncio.to_thread(transcribe_bytes, raw_audio, 16000)
+                        if not transcript or len(transcript) < 2:
+                            transcript = None
+                    else:
+                        transcript = None
             elif data_text:
                 try:
                     import json
@@ -151,7 +159,6 @@ async def voice_ws(websocket: WebSocket, call_id: str):
                     state["transcript"] = []
                 state["transcript"].append({"role": "customer", "text": transcript})
 
-                import asyncio
                 try:
                     result = await asyncio.wait_for(
                         asyncio.to_thread(handle_turn, transcript, state),

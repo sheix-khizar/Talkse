@@ -87,6 +87,35 @@ def transcribe(audio_path: str) -> tuple[str, float]:
 
     return "", 0.0
 
+def transcribe_bytes(pcm_bytes: bytes, sample_rate: int = 16000) -> tuple[str, float]:
+    """Transcribes raw PCM audio bytes in memory using Groq's whisper-large-v3-turbo model."""
+    import io
+    import wave
+    start_time = time.perf_counter()
+    
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(sample_rate)
+        wav_file.writeframes(pcm_bytes)
+    wav_bytes = buf.getvalue()
+    
+    try:
+        client = get_groq_client()
+        transcription = client.audio.transcriptions.create(
+            file=("speech.wav", wav_bytes),
+            model="whisper-large-v3-turbo",
+            response_format="json"
+        )
+        transcript = transcription.text if hasattr(transcription, "text") else str(transcription)
+        elapsed = time.perf_counter() - start_time
+        return transcript.strip(), elapsed
+    except Exception as e:
+        logger.warning(f"[STT Warning] Groq Whisper bytes transcription failed: {e}")
+        return "", 0.0
+
+
 def merge_state(current_state: dict, new_extracted: dict) -> dict:
     """Merges new extracted fields into current state without overwriting non-null values with nulls."""
     new_intent = new_extracted.get("intent")
