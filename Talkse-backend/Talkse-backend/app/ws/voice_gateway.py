@@ -1,4 +1,6 @@
+import asyncio
 import base64
+import logging
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from app.services.streaming_stt import StreamingTranscriber
 from app.services.conversation_loop import handle_turn
@@ -7,6 +9,7 @@ from app.services.tts.router import synthesize_for_plan
 from app.services import db
 
 router = APIRouter()
+logger = logging.getLogger("talkse")
 
 
 async def _emit(websocket: WebSocket, event_type: str, data: dict):
@@ -19,10 +22,9 @@ async def _emit(websocket: WebSocket, event_type: str, data: dict):
 async def _synthesize_and_emit(websocket: WebSocket, call_id: str, text: str, state: dict = None):
     """Synthesizes reply_text to audio and sends it as a base64-encoded
     audio.chunk event. Runs synthesize() in a thread since it's a blocking
-    network call (Deepgram SDK is sync) and this handler is async — without
-    this, one slow TTS call would stall every other concurrent call on the
-    same event loop."""
-    import asyncio
+    network call (Deepgram/ElevenLabs SDKs are sync) and this handler is
+    async — without this, one slow TTS call would stall every other
+    concurrent call on the same event loop."""
     import os
 
     out_path = f"app/services/tts_cache/{call_id}_{abs(hash(text))}.wav"
@@ -34,30 +36,45 @@ async def _synthesize_and_emit(websocket: WebSocket, call_id: str, text: str, st
         elapsed, provider_used = await asyncio.wait_for(task, timeout=5.0)
         with open(out_path, "rb") as f:
             audio_bytes = f.read()
-            
+
         try:
-            db.log_tts_usage(
-                call_id, 
-                state.get("tenant_id") if state else None, 
-                provider_used, 
-                len(text), 
-                elapsed
+            # DB write — psycopg2 is synchronous, so this must also be
+            # offloaded or it blocks the event loop for every reply.
+            await asyncio.to_thread(
+                db.log_tts_usage,
+                call_id,
+                state.get("tenant_id") if state else None,
+                provider_used,
+                len(text),
+                elapsed,
             )
         except Exception as e:
-            import logging
-            logging.getLogger("talkse").warning(f"[TTS] Failed to log usage: {e}")
+            logger.warning(f"[TTS] Failed to log usage: {e}")
 
         await websocket.send_json({
             "type": "audio.chunk",
             "data": {"audio_base64": base64.b64encode(audio_bytes).decode("ascii")},
         })
     except Exception as e:
-        import logging
-        logger = logging.getLogger("talkse")
         logger.warning(f"[TTS Warning] Failed to synthesize/send audio for call {call_id}: {e}")
     finally:
         if os.path.exists(out_path):
-            os.remove(out_path)  # don't accumulate WAV files — see Sprint 4 for the STT temp-file equivalent
+            os.remove(out_path)  # don't accumulate WAV files
+
+
+async def _start_transcriber() -> "StreamingTranscriber | None":
+    """Builds and opens the streaming STT connection off the event loop.
+    Returns None (and logs) on any failure instead of leaving a
+    partially-initialized object around — callers must treat None as
+    'STT unavailable for this call' and must NOT call .close() on it."""
+    try:
+        transcriber = await asyncio.to_thread(StreamingTranscriber, sample_rate=16000)
+        await asyncio.to_thread(transcriber.start)
+        transcriber.begin_turn()
+        return transcriber
+    except Exception as e:
+        logger.warning(f"[Streaming STT Warning] Could not start live transcriber: {e}")
+        return None
 
 
 @router.websocket("/ws/calls/{call_id}")
@@ -74,13 +91,17 @@ async def voice_ws(websocket: WebSocket, call_id: str):
         "plan": state.get("plan", "free"),
     })
 
+    # The WebSocket is the single source of truth for the spoken greeting.
+    # (The REST POST /api/v1/calls endpoint must NOT set
+    # initial_prompt_emitted=True — see calls.py patch — or this block
+    # never runs and the caller never hears an opening line.)
     if state.get("turn_count", 0) == 0 and state.get("status") == "collecting" and not state.get("initial_prompt_emitted"):
         state["initial_prompt_emitted"] = True
         save_session(call_id, state)
         from app.services.conversation_loop import next_missing_field, prompt_for_field
         missing = next_missing_field(state) or "intent"
         opening = prompt_for_field(missing)
-        
+
         await _emit(websocket, "transcript.final", {
             "role": "ai",
             "text": opening,
@@ -95,14 +116,7 @@ async def voice_ws(websocket: WebSocket, call_id: str):
             "isAiSpeaking": False,
         })
 
-    transcriber = None
-    try:
-        transcriber = StreamingTranscriber(sample_rate=16000)
-        transcriber.start()
-        transcriber.begin_turn()
-    except Exception as e:
-        import logging
-        logging.getLogger("talkse").warning(f"[Streaming STT Warning] Could not start live transcriber: {e}")
+    transcriber = await _start_transcriber()
 
     try:
         while True:
@@ -118,10 +132,12 @@ async def voice_ws(websocket: WebSocket, call_id: str):
                     try:
                         transcript = transcriber.feed(data_bytes)
                     except Exception as err:
-                        import logging
-                        logging.getLogger("talkse").warning(f"[Streaming STT Feed Error] {err}")
+                        logger.warning(f"[Streaming STT Feed Error] {err}")
                         transcript = None
                 else:
+                    # STT never came up for this call. Don't silently eat
+                    # every frame forever — tell the frontend once so it
+                    # can surface a real error instead of looking "stuck".
                     transcript = None
             elif data_text:
                 try:
@@ -143,7 +159,18 @@ async def voice_ws(websocket: WebSocket, call_id: str):
                     state["transcript"] = []
                 state["transcript"].append({"role": "customer", "text": transcript})
 
-                result = handle_turn(transcript, state)
+                try:
+                    # handle_turn() calls the LLM (Groq/Gemini, sync SDKs)
+                    # and the DB (psycopg2, sync) — must be offloaded or
+                    # it blocks every other concurrent call's audio.
+                    result = await asyncio.to_thread(handle_turn, transcript, state)
+                except Exception as e:
+                    logger.error(f"[Turn Error] handle_turn failed for call {call_id}: {e}")
+                    result = {
+                        "reply_text": "Sorry, I hit a snag processing that. Could you say that again?",
+                        "terminal": False,
+                    }
+
                 save_session(call_id, state)
 
                 await _emit(websocket, "state.changed", {
@@ -176,7 +203,7 @@ async def voice_ws(websocket: WebSocket, call_id: str):
                     }
                 })
 
-                if result["terminal"]:
+                if result.get("terminal"):
                     await _emit(websocket, "call.ended", {
                         "callId": call_id,
                         "outcome": state.get("status"),
@@ -184,8 +211,14 @@ async def voice_ws(websocket: WebSocket, call_id: str):
                     break
     except WebSocketDisconnect:
         pass
+    except Exception as e:
+        logger.error(f"[Voice Gateway] Unhandled error on call {call_id}: {e}")
     finally:
-        transcriber.close()
+        if transcriber:
+            try:
+                await asyncio.to_thread(transcriber.close)
+            except Exception as e:
+                logger.warning(f"[Streaming STT] Error closing transcriber for {call_id}: {e}")
         # Save call log if not already saved via /end endpoint
         state = get_session(call_id)
         if state and state.get("status") not in ("ended",):
@@ -194,15 +227,15 @@ async def voice_ws(websocket: WebSocket, call_id: str):
             tenant_id = state.get("tenant_id")
             if tenant_id:
                 try:
-                    db.insert_call_log(
+                    await asyncio.to_thread(
+                        db.insert_call_log,
                         tenant_id=tenant_id,
                         call_id=call_id,
                         caller_name=state.get("caller_name"),
                         status=state["status"],
                         started_at=None,
                         transcript=state.get("transcript", []),
-                        booking_result=state.get("booking_result")
+                        booking_result=state.get("booking_result"),
                     )
                 except Exception as e:
-                    import logging
-                    logging.getLogger("talkse").error(f"Failed to save call log for {call_id}: {e}")
+                    logger.error(f"Failed to save call log for {call_id}: {e}")

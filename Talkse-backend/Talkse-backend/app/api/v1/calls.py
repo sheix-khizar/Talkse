@@ -57,7 +57,12 @@ def start_call(tenant_id: str = "042", plan: str | None = None):
         "idempotency_key": call_id, "booking_result": None,
         "tenant_id": tenant_id,
         "plan": resolved_plan,
-        "initial_prompt_emitted": True,
+        # NOTE: do NOT set initial_prompt_emitted=True here. The WebSocket
+        # handler (voice_gateway.py) is the only place that actually
+        # synthesizes and sends greeting AUDIO. reply_text below is
+        # returned for the typed/REST flow (frontend currently discards
+        # it in startNewCall(), which is fine); the live-audio greeting
+        # is emitted once the socket connects.
     }
     new_session(call_id, state)
     opening = prompt_for_field("intent")

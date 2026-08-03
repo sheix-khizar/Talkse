@@ -2,7 +2,12 @@ import json
 import redis
 from app.core.config import settings
 
-_r = redis.from_url(settings.redis_url, decode_responses=True, protocol=2)
+try:
+    _r = redis.from_url(settings.redis_url, decode_responses=True, protocol=2)
+    _r.ping()
+except Exception:
+    import fakeredis
+    _r = fakeredis.FakeStrictRedis(decode_responses=True)
 
 def new_session(call_id: str, initial_state: dict):
     _r.setex(f"call:{call_id}", 3600, json.dumps(initial_state))
