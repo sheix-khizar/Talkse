@@ -5,7 +5,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from app.services.streaming_stt import StreamingTranscriber
 from app.services.conversation_loop import handle_turn
 from app.session.store import get_session, save_session
-from app.services.tts.router import synthesize_for_plan
+from app.services.tts.router import synthesize_for_plan_bytes
 from app.services import db
 
 router = APIRouter()
@@ -21,21 +21,16 @@ async def _emit(websocket: WebSocket, event_type: str, data: dict):
 
 async def _synthesize_and_emit(websocket: WebSocket, call_id: str, text: str, state: dict = None):
     """Synthesizes reply_text to audio and sends it as a base64-encoded
-    audio.chunk event. Runs synthesize() in a thread since it's a blocking
-    network call (Deepgram/ElevenLabs SDKs are sync) and this handler is
-    async — without this, one slow TTS call would stall every other
-    concurrent call on the same event loop."""
-    import os
-
-    out_path = f"app/services/tts_cache/{call_id}_{abs(hash(text))}.wav"
-    os.makedirs(os.path.dirname(out_path), exist_ok=True)
-
+    audio.chunk event. Runs synthesize_for_plan_bytes() in a thread since
+    it's a blocking network call (Deepgram/ElevenLabs SDKs are sync) and
+    this handler is async — without this, one slow TTS call would stall
+    every other concurrent call on the same event loop. Audio bytes are
+    kept entirely in memory (no disk round-trip) to avoid the latency of
+    writing a .wav to disk and immediately reading it back."""
     try:
         plan = state.get("plan", "free") if state else "free"
-        task = asyncio.to_thread(synthesize_for_plan, plan, text, out_path)
-        elapsed, provider_used = await asyncio.wait_for(task, timeout=8.0)
-        with open(out_path, "rb") as f:
-            audio_bytes = f.read()
+        task = asyncio.to_thread(synthesize_for_plan_bytes, plan, text)
+        audio_bytes, elapsed, provider_used = await asyncio.wait_for(task, timeout=8.0)
 
         try:
             # DB write — psycopg2 is synchronous, so this must also be
@@ -57,9 +52,6 @@ async def _synthesize_and_emit(websocket: WebSocket, call_id: str, text: str, st
         })
     except Exception as e:
         logger.warning(f"[TTS Warning] Failed to synthesize/send audio for call {call_id}: {e}")
-    finally:
-        if os.path.exists(out_path):
-            os.remove(out_path)  # don't accumulate WAV files
 
 
 async def _start_transcriber() -> "StreamingTranscriber | None":

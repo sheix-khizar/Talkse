@@ -86,9 +86,6 @@ export function useLiveCall(callId = null, getToken) {
           console.log("WebSocket closed", event.code);
 
           if (event.code === 4404) {
-            // Backend closed because this call_id doesn't exist in
-            // Redis session state — not a transient network issue,
-            // retrying will never succeed. Surface it instead of looping.
             console.warn(`Call ${callId} not found on backend (4404) — not reconnecting.`);
             setConnectionState('NOT_FOUND');
             return;
@@ -188,7 +185,7 @@ export function useLiveCall(callId = null, getToken) {
         break;
 
       case 'audio.chunk':
-        playAudioChunk(data.audio_base64);
+        enqueueAudioChunk(data.audio_base64);
         break;
 
       case 'call.ended':
@@ -206,9 +203,93 @@ export function useLiveCall(callId = null, getToken) {
   const mediaStreamRef = useRef(null);
   const processorRef = useRef(null);
 
+  // --- Echo prevention: mic frames are dropped while the AI is speaking. ---
+  // Driven by real <audio> playback events (not server-reported isAiSpeaking),
+  // plus a short grace period after playback ends to cover echo tail /
+  // output-device buffering.
+  const micMutedRef = useRef(false);
+  const muteGraceTimeoutRef = useRef(null);
+  const ECHO_GRACE_PERIOD_MS = 400;
+
+  const muteMic = () => {
+    if (muteGraceTimeoutRef.current) {
+      clearTimeout(muteGraceTimeoutRef.current);
+      muteGraceTimeoutRef.current = null;
+    }
+    micMutedRef.current = true;
+  };
+
+  const unmuteMicAfterGrace = () => {
+    if (muteGraceTimeoutRef.current) clearTimeout(muteGraceTimeoutRef.current);
+    muteGraceTimeoutRef.current = setTimeout(() => {
+      micMutedRef.current = false;
+      muteGraceTimeoutRef.current = null;
+    }, ECHO_GRACE_PERIOD_MS);
+  };
+
+  // --- Playback queue: serializes audio.chunk playback so overlapping
+  // chunks (e.g. FAQ/RAG streaming, which sends one chunk per sentence)
+  // never play on top of each other. ---
+  const audioQueueRef = useRef([]);
+  const isPlayingRef = useRef(false);
+  const currentAudioUrlRef = useRef(null);
+
+  const enqueueAudioChunk = (base64Audio) => {
+    audioQueueRef.current.push(base64Audio);
+    if (!isPlayingRef.current) {
+      playNextInQueue();
+    }
+  };
+
+  const playNextInQueue = () => {
+    if (audioQueueRef.current.length === 0) {
+      isPlayingRef.current = false;
+      unmuteMicAfterGrace();
+      return;
+    }
+
+    isPlayingRef.current = true;
+    muteMic(); // mic stays muted for as long as anything is in the queue
+
+    const base64Audio = audioQueueRef.current.shift();
+    try {
+      const binary = atob(base64Audio);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      const blob = new Blob([bytes], { type: 'audio/wav' });
+      const url = URL.createObjectURL(blob);
+      currentAudioUrlRef.current = url;
+
+      const audio = new Audio(url);
+      audio.onended = () => {
+        URL.revokeObjectURL(url);
+        playNextInQueue(); // move to the next queued chunk, if any
+      };
+      audio.onerror = (err) => {
+        console.error('Audio playback error:', err);
+        URL.revokeObjectURL(url);
+        playNextInQueue();
+      };
+      audio.play().catch((err) => {
+        console.warn('Audio playback blocked:', err);
+        URL.revokeObjectURL(url);
+        playNextInQueue();
+      });
+    } catch (err) {
+      console.error('Failed to play audio chunk:', err);
+      playNextInQueue();
+    }
+  };
+
   const startMicrophone = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
       mediaStreamRef.current = stream;
 
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
@@ -254,6 +335,7 @@ export function useLiveCall(callId = null, getToken) {
         processorRef.current = workletNode;
 
         workletNode.port.onmessage = (e) => {
+          if (micMutedRef.current) return; // AI is speaking (or in echo grace period) — drop this frame
           if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
           wsRef.current.send(e.data);
         };
@@ -265,6 +347,7 @@ export function useLiveCall(callId = null, getToken) {
         processorRef.current = processor;
 
         processor.onaudioprocess = (e) => {
+          if (micMutedRef.current) return; // AI is speaking (or in echo grace period) — drop this frame
           if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
           const inputData = e.inputBuffer.getChannelData(0);
           const pcm16 = new Int16Array(inputData.length);
@@ -286,6 +369,10 @@ export function useLiveCall(callId = null, getToken) {
   };
 
   const stopMicrophone = () => {
+    if (muteGraceTimeoutRef.current) {
+      clearTimeout(muteGraceTimeoutRef.current);
+      muteGraceTimeoutRef.current = null;
+    }
     if (processorRef.current) {
       processorRef.current.disconnect();
       processorRef.current = null;
@@ -347,7 +434,7 @@ export function useLiveCall(callId = null, getToken) {
           ]);
           setIsAiSpeaking(true);
           if (data.audio_base64) {
-            playAudioChunk(data.audio_base64);
+            enqueueAudioChunk(data.audio_base64);
           }
         }
         if (data.state) {
@@ -368,21 +455,6 @@ export function useLiveCall(callId = null, getToken) {
     } catch (err) {
       console.error("Failed to send text turn:", err);
       setTurnError(err.message);
-    }
-  };
-
-  const playAudioChunk = (base64Audio) => {
-    try {
-      const binary = atob(base64Audio);
-      const bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-      const blob = new Blob([bytes], { type: 'audio/wav' });
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      audio.play().catch((err) => console.warn('Audio playback blocked:', err));
-      audio.onended = () => URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error('Failed to play audio chunk:', err);
     }
   };
 

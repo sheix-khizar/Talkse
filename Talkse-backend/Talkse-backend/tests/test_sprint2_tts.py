@@ -24,7 +24,7 @@ async def test_synthesize_and_emit():
          patch("os.path.exists", return_value=True), \
          patch("os.remove", return_value=None):
         
-        mock_to_thread.return_value = (0.5, "deepgram")
+        mock_to_thread.return_value = (b"fake_wav_bytes", 0.5, "deepgram")
         await _synthesize_and_emit(mock_ws, "call_999", "Hello patient", {})
 
         assert mock_to_thread.call_count >= 1

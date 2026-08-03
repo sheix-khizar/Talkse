@@ -13,3 +13,6 @@ pydantic-settings
 redis
 python-multipart
 clerk-backend-api
+pytest
+pytest-asyncio
+httpx

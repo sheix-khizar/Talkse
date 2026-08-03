@@ -151,7 +151,7 @@ def extract_intent(transcript: str) -> tuple[dict, float]:
     except Exception as e:
         logger.warning(f"[LLM Stage Warning] Groq LLM ({model_name}) failed: {e}. Falling back to Gemini 2.0 Flash...")
         try:
-            model_name = "gemini-flash-lite-latest"
+            model_name = "gemini-2.0-flash"
             client = get_gemini_client()
             response = client.models.generate_content(
                 model=model_name,

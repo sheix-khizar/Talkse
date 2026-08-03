@@ -116,7 +116,7 @@ def book_appointment(state: dict, idempotency_key: str, tenant_id: str | None = 
                     break
         available, candidate_reason = is_slot_available(tenant_id, candidate["id"], service["id"], candidate_start)
         if available:
-            provider, requested_start = candidate_start
+            provider, requested_start = candidate, candidate_start
             break
         reason = candidate_reason
 

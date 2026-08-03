@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from google import genai
 
 
+from app.services import db
 from app.services.rag.retriever import retrieve
 from app.services import db
 

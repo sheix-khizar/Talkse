@@ -137,7 +137,7 @@ class StreamingTranscriber:
             channels=1,
             interim_results=True,
             punctuate=True,
-            endpointing=500,
+            endpointing=300,
         )
         self.socket_cm = self.connection
         self.conn = self.socket_cm.__enter__()

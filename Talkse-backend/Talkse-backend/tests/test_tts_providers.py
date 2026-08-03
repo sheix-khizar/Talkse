@@ -3,6 +3,10 @@ import pytest
 from app.services.tts.deepgram_tts import DeepgramTTS
 from app.services.tts.elevenlabs_tts import ElevenLabsTTS
 
+@pytest.mark.skipif(
+    os.getenv("RUN_LIVE_TTS_TESTS") != "1",
+    reason="RUN_LIVE_TTS_TESTS=1 not set"
+)
 def test_deepgram_tts_integration():
     """Live API test for DeepgramTTS."""
     # Assuming DEEPGRAM_API_KEY is available in env.
