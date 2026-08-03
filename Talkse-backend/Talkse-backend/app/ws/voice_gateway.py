@@ -242,18 +242,12 @@ async def voice_ws(websocket: WebSocket, call_id: str):
                     break
     except WebSocketDisconnect:
         pass
-    except Exception as e:
-        logger.error(f"[Voice Gateway] Unhandled error on call {call_id}: {e}")
     finally:
         if transcriber:
-<<<<<<< HEAD
             try:
                 await asyncio.to_thread(transcriber.close)
             except Exception as e:
                 logger.warning(f"[Streaming STT] Error closing transcriber for {call_id}: {e}")
-=======
-            transcriber.close()
->>>>>>> ab2940a (feat: complete implementation of performance engine optimizations, RAG streaming fixes, and repository cleanup)
         # Save call log if not already saved via /end endpoint
         state = get_session(call_id)
         if state and state.get("status") not in ("ended",):
