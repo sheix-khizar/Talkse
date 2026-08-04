@@ -128,6 +128,35 @@ def migrate_tenant_columns():
     finally:
         release_connection(conn)
 
+def migrate_phone_column():
+    """Adds phone_number to clinics if missing. Idempotent — safe to call
+    every startup, same pattern as migrate_tenant_columns()."""
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                ALTER TABLE clinics ADD COLUMN IF NOT EXISTS phone_number TEXT UNIQUE;
+            """)
+            conn.commit()
+            logger.info("[DB] phone_number column ready on clinics table.")
+    finally:
+        release_connection(conn)
+
+def get_tenant_by_phone(phone_number: str) -> str | None:
+    """Resolves the tenant_id that owns a given SignalWire number
+    (E.164, e.g. '+14155551234'). Returns None if unmapped."""
+    if not phone_number:
+        return None
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id FROM clinics WHERE phone_number = %s;", (phone_number,))
+            row = cur.fetchone()
+            return row[0] if row else None
+    finally:
+        release_connection(conn)
+
+
 def enable_tenant_rls():
     """Defense-in-depth: even if application code forgets a WHERE tenant_id
     clause somewhere, Postgres itself refuses cross-tenant rows once

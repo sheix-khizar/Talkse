@@ -23,6 +23,12 @@ class Settings(BaseSettings):
     elevenlabs_voice_id: str = ""
     elevenlabs_model_id: str = "eleven_turbo_v2_5"
 
+    signalwire_space: str = ""
+    signalwire_project: str = ""
+    signalwire_token: str = ""
+    signalwire_signing_key: str = ""
+    public_host: str = ""
+
     model_config = ConfigDict(
         env_file=".env",
         extra="ignore",

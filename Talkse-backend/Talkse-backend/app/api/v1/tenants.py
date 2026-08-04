@@ -73,6 +73,32 @@ def update_tenant_plan(tenant_id: str, request: PlanUpdateRequest):
     return {"status": "success", "plan": request.plan}
 
 
+class PhoneNumberUpdateRequest(BaseModel):
+    phone_number: str
+
+
+@router.put("/phone-number")
+def update_tenant_phone_number(tenant_id: str, request: PhoneNumberUpdateRequest):
+    """Associates an E.164 phone number (e.g. '+14155551234') with the tenant."""
+    clinic = db.get_clinic_row(tenant_id)
+    if not clinic:
+        raise HTTPException(404, "Clinic not found")
+
+    conn = db.get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE clinics SET phone_number = %s WHERE id = %s;",
+                (request.phone_number.strip(), tenant_id)
+            )
+            conn.commit()
+    finally:
+        db.release_connection(conn)
+
+    config.refresh_tenant_cache(tenant_id)
+    return {"status": "success", "phone_number": request.phone_number}
+
+
 @router.get("/patients")
 def get_patient(tenant_id: str, phone: str = Query(...)):
     """STOPGAP — there is no `patients` table yet (see fix_plan.md Sprint 6:

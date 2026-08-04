@@ -11,8 +11,8 @@ logging.basicConfig(
 logger = logging.getLogger("talkse")
 from app.core.config import settings
 from app.services import db
-from app.api.v1 import calls, appointments, rag, clinic, tenants
-from app.ws import voice_gateway
+from app.api.v1 import calls, appointments, rag, clinic, tenants, signalwire_webhook
+from app.ws import voice_gateway, signalwire_gateway
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -20,6 +20,7 @@ async def lifespan(app: FastAPI):
     db.init_db()
     db.init_tenant_tables()
     db.migrate_tenant_columns()
+    db.migrate_phone_column()
     db.init_rag_tables()
     db.init_tts_usage_table()
     db.init_call_logs_table()
@@ -47,3 +48,5 @@ app.include_router(rag.router)
 app.include_router(clinic.router)
 app.include_router(tenants.router)
 app.include_router(voice_gateway.router)
+app.include_router(signalwire_webhook.router)
+app.include_router(signalwire_gateway.router)
