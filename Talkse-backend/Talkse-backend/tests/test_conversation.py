@@ -335,3 +335,36 @@ def test_explicit_faq_intent_routes_to_rag(monkeypatch):
 
     assert result["is_faq"] is True
     assert result["terminal"] is False
+
+
+def test_service_check_when_already_in_book_intent(monkeypatch):
+    monkeypatch.setattr(cl, "extract_intent", lambda t: (
+        {"intent": "unclear", "service": None, "preferred_time": None,
+         "caller_name": None, "existing_appointment_ref": None, "confidence": 0.5}, 0.1
+    ))
+    state = base_state(intent="book")
+    result = cl.handle_turn("What kind of services do you provide, Abdullah?", state)
+
+    assert result["terminal"] is False
+    assert result["is_faq"] is False
+    assert "variety of aesthetic treatments" in result["reply_text"]
+
+
+def test_faq_intent_when_already_in_book_intent(monkeypatch):
+    monkeypatch.setattr(cl, "extract_intent", lambda t: (
+        {"intent": "faq", "service": None, "preferred_time": None,
+         "caller_name": None, "existing_appointment_ref": None, "confidence": 0.9}, 0.1
+    ))
+
+    def fake_rag_stream(question, *args, **kwargs):
+        yield [{"title": "Hours", "url": "https://example.test/hours"}]
+        yield "We are open Monday through Friday from 9 AM to 5 PM."
+
+    monkeypatch.setattr(cl, "answer_question_streaming", fake_rag_stream)
+
+    state = base_state(intent="book")
+    result = cl.handle_turn("What are your hours?", state)
+
+    assert result["is_faq"] is True
+    assert result["terminal"] is False
+

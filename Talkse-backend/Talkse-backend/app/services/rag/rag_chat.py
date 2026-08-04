@@ -41,29 +41,49 @@ def answer_question_streaming(question: str, tenant_id: str | None = None):
         "6. Do not use markdown, bullet points, or numbered lists — this is spoken audio."
     )
 
-    client = get_client(api_key)
-    response_stream = client.models.generate_content_stream(
-        model="gemini-flash-lite-latest",
-        contents=f"Context:\n{context_block}\n\nQuestion: {question}",
-        config={
-            "system_instruction": system_prompt,
-            "temperature": 0.3,
-            "max_output_tokens": 80
-        }
-    )
-
     sources = list({(r["title"], r["url"]) for r in results})  # dedupe
     yield [{"title": s[0], "url": s[1]} for s in sources]
-    
-    buffer = ""
-    for chunk in response_stream:
-        buffer += chunk.text
-        # Naive sentence split by punctuation. A real one might be more robust.
-        if buffer.strip().endswith((".", "?", "!")):
-            yield buffer.strip()
-            buffer = ""
-    if buffer.strip():
-        yield buffer.strip()
+
+    raw_answer = ""
+    groq_key = os.getenv("GROQ_API_KEY")
+    if groq_key:
+        try:
+            from app.services.ai_clients import get_groq_client
+            groq_client = get_groq_client()
+            res = groq_client.chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": f"Context:\n{context_block}\n\nQuestion: {question}"}
+                ],
+                temperature=0.3,
+                max_tokens=100
+            )
+            raw_answer = res.choices[0].message.content.strip()
+        except Exception as err:
+            import logging
+            logging.getLogger("talkse").warning(f"[RAG Groq Warning] {err}")
+
+    if not raw_answer and api_key:
+        try:
+            client = get_client(api_key)
+            response = client.models.generate_content(
+                model="gemini-flash-lite-latest",
+                contents=f"Context:\n{context_block}\n\nQuestion: {question}",
+                config={
+                    "system_instruction": system_prompt,
+                    "temperature": 0.3,
+                    "max_output_tokens": 80
+                }
+            )
+            raw_answer = response.text.strip() if response and response.text else ""
+        except Exception as fallback_err:
+            import logging
+            logging.getLogger("talkse").error(f"[RAG Gemini Error] {fallback_err}")
+            raw_answer = "I'm having trouble retrieving that information right now, but I can have our staff contact you."
+
+    if raw_answer:
+        yield raw_answer
 
 if __name__ == "__main__":
     stream_gen = answer_question_streaming("What is Botox?", "042")

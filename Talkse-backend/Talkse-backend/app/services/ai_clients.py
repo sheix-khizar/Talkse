@@ -40,9 +40,10 @@ def get_gemini_client():
         gemini_key = os.getenv("GEMINI_API_KEY")
         if not gemini_key:
             raise ValueError("GEMINI_API_KEY missing in environment variables.")
+        timeout_ms = max(10000, int(float(os.getenv("LLM_TIMEOUT_SECONDS", "4.0")) * 1000))
         _gemini_client = genai.Client(
             api_key=gemini_key,
-            http_options=types.HttpOptions(timeout=int(float(os.getenv("LLM_TIMEOUT_SECONDS", "4.0")) * 1000)),
+            http_options=types.HttpOptions(timeout=timeout_ms),
         )
     return _gemini_client
 
@@ -122,7 +123,7 @@ def merge_state(current_state: dict, new_extracted: dict) -> dict:
     if new_intent == "book_appointment":
         new_intent = "book"
 
-    if new_intent in ("book", "reschedule", "cancel", "faq", "service_check") and current_state.get("intent") in (None, "unclear"):
+    if new_intent in ("book", "reschedule", "cancel", "faq", "service_check"):
         current_state["intent"] = new_intent
 
     for field in ("service", "preferred_time", "caller_name", "existing_appointment_ref"):

@@ -140,6 +140,19 @@ def handle_turn(transcript: str, state: dict) -> dict:
         return {"reply_text": contra_reason, "llm_time": llm_time, "routed": routed is not None,
                 "is_faq": False, "faq_stream": None, "terminal": True}
 
+    trans_lower = (transcript or "").lower().strip()
+    general_query_keywords = [
+        "what service", "what kind of service", "what treatment", "what do you offer",
+        "what do you provide", "services do you provide", "services do you offer",
+        "services you provide", "services you offer", "list of services", "all services",
+        "what do you have", "what can i book", "what are your services", "tell me about your services",
+        "which services", "what kind of treatments", "what services do you", "what services"
+    ]
+    if any(kw in trans_lower for kw in general_query_keywords):
+        extracted["intent"] = "service_check"
+        if not extracted.get("service"):
+            extracted["service"] = "services"
+
     # 4. Merge state
     merge_state(state, extracted)
 
