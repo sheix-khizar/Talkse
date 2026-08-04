@@ -18,6 +18,9 @@ def embed_document(text: str, api_key: str) -> list[float]:
     )
     return result.embeddings[0].values
 
+import functools
+
+@functools.lru_cache(maxsize=100)
 def embed_query(text: str, api_key: str) -> list[float]:
     client = get_client(api_key)
     result = client.models.embed_content(

@@ -21,13 +21,14 @@ def _chain_for_plan(plan: str) -> list:
     return [_deepgram]  # free tier never touches ElevenLabs, even as fallback
 
 
-def synthesize_for_plan(plan: str, text: str, out_path: str) -> tuple[float, str]:
+def synthesize_for_plan(plan: str, text: str, out_path: str, audio_format: str = "wav") -> tuple[float, str]:
     """Tries each provider in the plan's chain in order.
     Returns (elapsed_seconds, provider_name_used).
     Raises RuntimeError only if every provider in the chain fails."""
     last_err = None
     for provider in _chain_for_plan(plan):
         try:
+            # Assumes provider.synthesize signature is updated, or it ignores audio_format
             elapsed = provider.synthesize(text, out_path)
             return elapsed, provider.name
         except Exception as e:

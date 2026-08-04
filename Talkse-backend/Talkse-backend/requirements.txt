@@ -12,3 +12,4 @@ pydantic-settings
 redis
 python-multipart
 clerk-backend-api
+uvloop; sys_platform != 'win32'

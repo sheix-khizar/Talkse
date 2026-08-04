@@ -18,6 +18,19 @@ export function useLiveCall(callId = null, getToken) {
   const reconnectAttemptsRef = useRef(0);
   const maxReconnectAttempts = 5;
 
+  const currentAudioRef = useRef(null);
+  const audioQueue = useRef([]);
+  const isPlaying = useRef(false);
+
+  const flushAudioQueue = () => {
+    audioQueue.current = [];
+    if (currentAudioRef.current) {
+      currentAudioRef.current.pause();
+      currentAudioRef.current = null;
+    }
+    isPlaying.current = false;
+  };
+
   // Format seconds to mm:ss
   const formatDuration = (totalSec) => {
     const mins = Math.floor(totalSec / 60);
@@ -47,13 +60,22 @@ export function useLiveCall(callId = null, getToken) {
     let socket;
     let isUnmounted = false;
 
-    const connectWebSocket = () => {
+    const connectWebSocket = async () => {
 
       // Use the current page's port so the connection routes through Vite's
       // /ws proxy (configured in vite.config.js) → ws://127.0.0.1:8000
       const wsPort = window.location.port || (window.location.protocol === 'https:' ? '443' : '80');
       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${wsProtocol}//${window.location.hostname}:${wsPort}/ws/calls/${callId}`;
+      
+      let token = "";
+      if (getToken) {
+        try {
+          token = await getToken();
+        } catch (e) {
+          console.error("Failed to get token", e);
+        }
+      }
+      const wsUrl = `${wsProtocol}//${window.location.hostname}:${wsPort}/ws/calls/${callId}?token=${token}`;
 
       setConnectionState('CONNECTING');
 
@@ -194,7 +216,12 @@ export function useLiveCall(callId = null, getToken) {
         playAudioChunk(data.audio_base64);
         break;
 
+      case 'audio.barge_in':
+        flushAudioQueue();
+        break;
+
       case 'call.ended':
+        flushAudioQueue();
         setStatus('ENDED');
         setIsAiSpeaking(false);
         break;
@@ -266,6 +293,7 @@ export function useLiveCall(callId = null, getToken) {
 
   const sendTextTurn = async (text) => {
     if (!callId || !text.trim()) return;
+    flushAudioQueue();
     setTurnError(null);
     try {
       setTranscript((prev) => [
@@ -315,6 +343,25 @@ export function useLiveCall(callId = null, getToken) {
     }
   };
 
+  const processAudioQueue = () => {
+    if (isPlaying.current || audioQueue.current.length === 0) return;
+    isPlaying.current = true;
+    const url = audioQueue.current.shift();
+    const audio = new Audio(url);
+    currentAudioRef.current = audio;
+    audio.play().catch((err) => {
+      console.warn('Audio playback blocked:', err);
+      isPlaying.current = false;
+      processAudioQueue();
+    });
+    audio.onended = () => {
+      URL.revokeObjectURL(url);
+      currentAudioRef.current = null;
+      isPlaying.current = false;
+      processAudioQueue();
+    };
+  };
+
   const playAudioChunk = (base64Audio) => {
     try {
       const binary = atob(base64Audio);
@@ -322,9 +369,8 @@ export function useLiveCall(callId = null, getToken) {
       for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
       const blob = new Blob([bytes], { type: 'audio/wav' });
       const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      audio.play().catch((err) => console.warn('Audio playback blocked:', err));
-      audio.onended = () => URL.revokeObjectURL(url);
+      audioQueue.current.push(url);
+      processAudioQueue();
     } catch (err) {
       console.error('Failed to play audio chunk:', err);
     }

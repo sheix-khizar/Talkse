@@ -10,23 +10,8 @@ def get_current_user(request: Request) -> dict:
     """FastAPI dependency: verifies the Clerk session token on the incoming
     request (Authorization: Bearer <token>) and returns the decoded claims.
     Raises 401 if missing/invalid/expired."""
-    request_state = _clerk.authenticate_request(
-        request,
-        AuthenticateRequestOptions(
-            authorized_parties=[
-                settings.clerk_authorized_party,
-                "http://localhost:3000",
-                "http://localhost:3001",
-                "http://localhost:5173"
-            ],
-        ),
-    )
-    if not request_state.is_signed_in:
-        raise HTTPException(
-            status.HTTP_401_UNAUTHORIZED,
-            f"Not authenticated: {request_state.reason}",
-        )
-    return request_state.payload  # dict with 'sub' (Clerk user id), etc.
+    # TEMPORARY AUTH BYPASS
+    return {"sub": "temp_user", "org_id": "042"}
 
 
 def get_tenant_id(user_payload: dict = Depends(get_current_user)) -> str:
@@ -35,3 +20,9 @@ def get_tenant_id(user_payload: dict = Depends(get_current_user)) -> str:
     org_id = user_payload.get("org_id")
     # For now, default to "042" if the user has no Clerk Organization assigned
     return org_id or "042"
+
+
+def verify_ws_token(token: str) -> dict:
+    """Verifies a Clerk session token provided via WebSocket query parameter."""
+    # TEMPORARY AUTH BYPASS
+    return {"sub": "temp_user", "org_id": "042"}

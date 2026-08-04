@@ -8,6 +8,7 @@ def retrieve(tenant_id: str, query: str, api_key: str, top_k: int = 5) -> list[d
     try:
         db.set_session_tenant(conn, tenant_id)
         with conn.cursor() as cur:
+            cur.execute("SET statement_timeout = 5000;")  # 5 seconds
             cur.execute("""
                 SELECT dc.chunk_text, d.title, d.source_url,
                        1 - (dc.embedding <=> %s::vector) AS similarity

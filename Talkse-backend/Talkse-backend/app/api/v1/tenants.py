@@ -135,16 +135,17 @@ def create_appointment(tenant_id: str, payload: dict):
 
     idempotency_key = idempotency_key or f"web_{provider_id}_{requested_start.isoformat()}"
 
-    available, reason = booking_engine.is_slot_available(provider_id, service_id, requested_start)
+    available, reason = booking_engine.is_slot_available(tenant_id, provider_id, service_id, requested_start)
     if not available:
         raise HTTPException(409, reason)
 
-    service = config.get_service(service_id)
+    service = config.get_service(tenant_id, service_id)
     duration = service.get("duration_minutes", 30) if service else 30
     scheduled_end = requested_start + timedelta(minutes=duration)
 
     try:
         appt = db.insert_appointment(
+            tenant_id=tenant_id,
             idempotency_key=idempotency_key,
             service_id=service_id,
             provider_id=provider_id,

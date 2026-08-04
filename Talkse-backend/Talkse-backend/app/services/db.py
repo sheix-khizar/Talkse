@@ -24,7 +24,7 @@ _pool = None
 def get_pool():
     global _pool
     if _pool is None:
-        _pool = pool.SimpleConnectionPool(1, 10, DATABASE_URL)
+        _pool = pool.ThreadedConnectionPool(2, 20, DATABASE_URL)
     return _pool
 
 def get_connection():

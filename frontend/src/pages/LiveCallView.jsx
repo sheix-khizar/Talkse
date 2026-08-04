@@ -22,6 +22,9 @@ export default function LiveCallView() {
   const [activeCalls, setActiveCalls] = useState([]);
   const [loadError, setLoadError] = useState(null);
   const [voiceTier, setVoiceTier] = useState('auto');
+  const [startError, setStartError] = useState(null);
+
+  const liveCall = useLiveCall(activeCallId, getToken);
 
   const refreshCalls = () => {
     getActiveCalls(selectedTenant.id, getToken).then((calls) => {

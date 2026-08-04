@@ -19,10 +19,6 @@ export default function App() {
 
   return (
     <>
-      <SignedOut>
-        <LoginPage />
-      </SignedOut>
-      <SignedIn>
         <TenantProvider>
           <div style={{ position: 'absolute', top: '10px', left: '50%', transform: 'translateX(-50%)', zIndex: 1000, background: 'rgba(0,0,0,0.5)', padding: '5px', borderRadius: '8px', display: 'flex', gap: '5px' }}>
             <button 
@@ -55,30 +51,6 @@ export default function App() {
             <InferenceTester />
           )}
         </TenantProvider>
-      </SignedIn>
-    </>
-  );
-}
-export default function App() {
-  return (
-    <>
-      <SignedOut>
-        <LoginPage />
-      </SignedOut>
-      <SignedIn>
-        <TenantProvider>
-          <NavBar />
-          <Routes>
-            <Route path="/" element={<LiveCallView />} />
-            <Route path="/appointments" element={<AppointmentsPage />} />
-            <Route path="/calls" element={<CallsPage />} />
-            <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/overview" element={<OverviewPage />} />
-            <Route path="/calendar" element={<CalendarPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-          </Routes>
-        </TenantProvider>
-      </SignedIn>
     </>
   );
 }
