@@ -202,10 +202,10 @@ export function useLiveCall(callId = null, getToken) {
   };
 
   const switchPipeline = async (provider) => {
+    setActiveProvider(provider);
     if (!callId) return;
     try {
       await setCallPipeline(callId, provider, getToken);
-      setActiveProvider(provider);
     } catch (err) {
       console.error('Failed to switch pipeline:', err);
       setTurnError(err.message);
