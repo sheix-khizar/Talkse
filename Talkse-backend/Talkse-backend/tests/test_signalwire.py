@@ -49,10 +49,7 @@ def test_signalwire_voice_webhook():
         },
     )
     assert response.status_code == 200
-    json_data = response.json()
-    assert json_data.get("version") == "1.0.0"
-    sections = json_data.get("sections", {})
-    assert "main" in sections
-    main_section = sections["main"]
-    assert any("answer" in item for item in main_section)
-    assert any("connect" in item for item in main_section)
+    assert "xml" in response.headers["content-type"]
+    assert "<Response>" in response.text
+    assert "<Connect>" in response.text
+    assert "<Stream url=" in response.text
