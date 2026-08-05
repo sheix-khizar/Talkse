@@ -1,9 +1,10 @@
 /* ── 3D Booking Calendar Stylesheet ── */
 
 .calendar-3d-wrapper {
-  max-width: 1400px;
+  width: 94%;
+  max-width: 1680px;
   margin: 0 auto;
-  padding: 2rem 1.5rem;
+  padding: 2rem 2rem;
   animation: page-fade-slide 0.4s ease-out;
   perspective: 1200px;
 }

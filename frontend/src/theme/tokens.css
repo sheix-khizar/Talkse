@@ -101,9 +101,10 @@ input, textarea, select {
 
 /* Global Centered Container */
 .page-container {
-  max-width: 1400px;
+  width: 94%;
+  max-width: 1680px;
   margin: 0 auto;
-  padding: 2rem 1.5rem;
+  padding: 2rem 2rem;
   box-sizing: border-box;
 }
 
