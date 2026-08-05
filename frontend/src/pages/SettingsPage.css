@@ -1,111 +1,512 @@
-.settings-container {
-  max-width: 900px;
+/* ── 3D Settings Directory Stylesheet ── */
+
+.settings-3d-wrapper {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+  animation: page-fade-slide 0.4s ease-out;
+  perspective: 1200px;
 }
 
-.settings-section {
+/* ── Page Header ── */
+.page-header-3d {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2.5rem;
+}
+
+.header-title-group {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.header-icon-glow {
+  width: 54px;
+  height: 54px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #0f766e 0%, #0d9488 50%, #0891b2 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  box-shadow: 0 10px 25px -5px rgba(15, 118, 110, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  transform: rotate(-3deg) translateZ(10px);
+  transition: transform 0.3s ease;
+}
+
+.header-icon-glow:hover {
+  transform: rotate(0deg) scale(1.05) translateZ(15px);
+}
+
+.page-title-3d {
+  font-size: 1.75rem;
+  font-weight: 750;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+  background: linear-gradient(135deg, #0f172a 0%, #0f766e 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.page-subtitle-3d {
+  font-size: 0.875rem;
+  color: #64748b;
+  margin-top: 0.2rem;
+}
+
+.refresh-btn-3d {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem 1.25rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #0f766e;
+  background: #ffffff;
+  border: 1px solid #ccfbf1;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(15, 118, 110, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+  transition: all 0.25s ease;
+}
+
+.refresh-btn-3d:hover {
+  background: #0f766e;
+  color: #ffffff;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(15, 118, 110, 0.3);
+}
+
+/* ── Section Header ── */
+.settings-section-3d {
   margin-bottom: 3rem;
 }
 
-.settings-section h3 {
-  font-size: 1.25rem;
-  color: var(--text-color);
-  margin-bottom: 0.25rem;
-}
-
-.section-desc {
-  font-size: 0.875rem;
-  color: var(--text-muted);
+.section-header-3d {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
   margin-bottom: 1.5rem;
 }
 
-.settings-card {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  padding: 1.5rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-}
-
-.settings-label {
-  display: block;
-  font-weight: 500;
-  margin-bottom: 0.5rem;
-  color: var(--text-color);
-}
-
-.settings-select {
-  padding: 0.5rem 1rem;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-color);
-  background: var(--bg-color);
-  color: var(--text-color);
-  font-size: 1rem;
-  min-width: 250px;
-  cursor: pointer;
-}
-
-.settings-select:focus {
-  outline: none;
-  border-color: var(--accent-color);
-}
-
-.profile-card {
+.section-icon-chip {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
   display: flex;
-  flex-direction: column;
-  gap: 1rem;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
 }
 
-.profile-row {
+.purple-chip { background: #f3e8ff; color: #7c3aed; border: 1px solid #e9d5ff; }
+.teal-chip { background: #e0f2f1; color: #0f766e; border: 1px solid #99f6e4; }
+.emerald-chip { background: #ecfdf5; color: #059669; border: 1px solid #a7f3d0; }
+.indigo-chip { background: #eef2ff; color: #4f46e5; border: 1px solid #c7d2fe; }
+
+.section-title-3d {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.section-desc-3d {
+  font-size: 0.85rem;
+  color: #64748b;
+  margin-top: 0.15rem;
+}
+
+/* ── 1. AI Voice Pipeline Selection Grid ── */
+.pipeline-options-grid-3d {
   display: grid;
-  grid-template-columns: 150px 1fr;
-  align-items: start;
-}
-
-.profile-label {
-  font-weight: 500;
-  color: var(--text-muted);
-}
-
-.profile-value {
-  color: var(--text-color);
-  font-weight: 500;
-}
-
-.hours-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.hour-item {
-  display: flex;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 1.5rem;
+  transform-style: preserve-3d;
+  transition: transform 0.3s ease;
 }
 
-.hour-day {
-  width: 100px;
-  text-transform: capitalize;
+.pipeline-card-3d {
+  position: relative;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  border-radius: 20px;
+  border: 2px solid #e2e8f0;
+  padding: 1.5rem;
+  cursor: pointer;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05);
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
 }
 
-.settings-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+.pipeline-card-3d:hover {
+  transform: translateY(-5px) scale(1.015);
+  box-shadow: 0 20px 35px -10px rgba(15, 118, 110, 0.15);
+}
+
+.pipeline-card-3d.active-elevenlabs {
+  border-color: #8b5cf6;
+  background: linear-gradient(180deg, #ffffff 0%, #faf5ff 100%);
+  box-shadow: 0 20px 40px -10px rgba(139, 92, 246, 0.25), 0 0 0 2px rgba(139, 92, 246, 0.3);
+}
+
+.pipeline-card-3d.active-deepgram {
+  border-color: #06b6d4;
+  background: linear-gradient(180deg, #ffffff 0%, #ecfeff 100%);
+  box-shadow: 0 20px 40px -10px rgba(6, 182, 212, 0.25), 0 0 0 2px rgba(6, 182, 212, 0.3);
+}
+
+.active-badge-pill {
+  position: absolute;
+  top: -12px;
+  right: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.73rem;
+  font-weight: 700;
+  border-radius: 20px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+}
+
+.purple-badge { background: #8b5cf6; color: #ffffff; }
+.cyan-badge { background: #06b6d4; color: #ffffff; }
+
+.pipeline-card-header {
+  display: flex;
+  align-items: center;
   gap: 1rem;
+  margin-bottom: 1rem;
 }
 
-.item-card h4 {
+.pipeline-logo-glow {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+}
+
+.purple-glow {
+  background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
+  box-shadow: 0 8px 16px rgba(139, 92, 246, 0.3);
+}
+
+.cyan-glow {
+  background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
+  box-shadow: 0 8px 16px rgba(6, 182, 212, 0.3);
+}
+
+.pipeline-name {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.pipeline-tag {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.pipeline-desc {
+  font-size: 0.85rem;
+  color: #475569;
+  line-height: 1.5;
+  margin-bottom: 1.25rem;
+}
+
+.pipeline-specs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 1.5rem;
+}
+
+.spec-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+.select-pipeline-btn {
+  width: 100%;
+  padding: 0.7rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  border-radius: 12px;
+  background: #f1f5f9;
+  color: #334155;
+  border: 1px solid #cbd5e1;
+  transition: all 0.25s ease;
+}
+
+.select-pipeline-btn:hover {
+  background: #0f766e;
+  color: #ffffff;
+  border-color: #0f766e;
+}
+
+.btn-active-purple {
+  background: #8b5cf6 !important;
+  color: #ffffff !important;
+  border-color: #8b5cf6 !important;
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+}
+
+.btn-active-cyan {
+  background: #06b6d4 !important;
+  color: #ffffff !important;
+  border-color: #06b6d4 !important;
+  box-shadow: 0 4px 12px rgba(6, 182, 212, 0.3);
+}
+
+/* ── 2. Clinic Profile Card ── */
+.profile-card-3d {
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  border-radius: 22px;
+  border: 1px solid rgba(15, 118, 110, 0.2);
+  box-shadow: 
+    0 20px 45px -12px rgba(15, 118, 110, 0.18),
+    0 8px 20px -5px rgba(0, 0, 0, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  padding: 1.75rem;
+  transform-style: preserve-3d;
+  transition: transform 0.3s ease;
+}
+
+.clinic-title-name {
+  font-size: 1.4rem;
+  font-weight: 750;
+  color: #0f172a;
   margin-bottom: 0.5rem;
-  font-size: 1rem;
 }
 
-.item-card p {
-  font-size: 0.875rem;
-  color: var(--text-muted);
-  margin-bottom: 0.75rem;
-}
-
-.contra-tags {
+.clinic-meta-badges {
   display: flex;
   flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.meta-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border-radius: 10px;
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+}
+
+.hours-divider {
+  margin: 1.5rem 0 1.25rem 0;
+  padding-top: 1.25rem;
+  border-top: 1px dashed #e2e8f0;
+}
+
+.divider-label {
+  display: flex;
+  align-items: center;
   gap: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #0f766e;
+}
+
+.hours-grid-3d {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.85rem;
+}
+
+.hour-pill-3d {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.65rem 1rem;
+  border-radius: 12px;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.hour-open {
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+}
+
+.hour-closed {
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+
+.day-name {
+  text-transform: capitalize;
+  font-weight: 700;
+}
+
+/* ── 3. Providers Grid ── */
+.providers-grid-3d {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1.25rem;
+}
+
+.provider-card-3d {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.04);
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.provider-card-3d:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 25px rgba(15, 118, 110, 0.15);
+  border-color: #99f6e4;
+}
+
+.provider-avatar-3d {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #0f766e 0%, #0891b2 100%);
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 0.95rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(15, 118, 110, 0.3);
+}
+
+.provider-name-text {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.provider-id-tag {
+  font-size: 0.73rem;
+  color: #64748b;
+}
+
+.provider-badge-status {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 650;
+  color: #059669;
+}
+
+.dot-green {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10b981;
+}
+
+/* ── 4. Services Grid ── */
+.services-grid-3d {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1.25rem;
+}
+
+.service-card-3d {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 1.25rem;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.04);
+  transition: all 0.25s ease;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.service-card-3d:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 25px rgba(15, 118, 110, 0.15);
+  border-color: #99f6e4;
+}
+
+.service-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.3rem;
+}
+
+.service-name-text {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.duration-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.73rem;
+  font-weight: 650;
+  border-radius: 10px;
+  background: #e0f2f1;
+  color: #0f766e;
+}
+
+.service-id-sub {
+  font-size: 0.73rem;
+  color: #94a3b8;
+  margin-bottom: 0.85rem;
+}
+
+.contra-section {
+  margin-top: 0.5rem;
+  padding-top: 0.6rem;
+  border-top: 1px dashed #e2e8f0;
+}
+
+.contra-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #e11d48;
+  display: block;
+  margin-bottom: 0.4rem;
+}
+
+.contra-pills-flex {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.contra-badge-3d {
+  padding: 0.25rem 0.6rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border-radius: 8px;
+  background: #fff1f2;
+  color: #be123c;
+  border: 1px solid #fecdd3;
 }
