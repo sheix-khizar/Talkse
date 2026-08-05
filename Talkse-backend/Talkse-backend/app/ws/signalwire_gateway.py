@@ -6,7 +6,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.services.streaming_stt import StreamingTranscriber
 from app.services.conversation_loop import handle_turn, prompt_for_field, next_missing_field
-from app.services.tts.router import synthesize_for_plan_bytes
+from app.services.tts.router import synthesize_for_provider_bytes
 from app.services.telephony.audio_convert import (
     mulaw_b64_to_pcm16, pcm16_to_mulaw, extract_pcm_from_wav_bytes,
 )
@@ -17,16 +17,37 @@ router = APIRouter()
 logger = logging.getLogger("talkse")
 
 SW_SAMPLE_RATE = 8000  # SignalWire's <Stream> default: mulaw @ 8kHz
-
-
 CHUNK_SIZE = 640  # 640 bytes = 80ms of 8kHz mu-law audio
 
 
-async def _send_audio(websocket: WebSocket, stream_id: str | None, text: str, plan: str):
-    """Synthesizes text and streams it back to SignalWire as paced mulaw frames."""
+def _refresh_pipeline(call_sid: str, state: dict) -> str:
+    """Re-reads only the voice_pipeline field from the session store so a
+    mid-call pipeline switch (PUT /api/v1/calls/{call_id}/pipeline) takes
+    effect on the next turn, without clobbering the rest of the in-memory
+    state this handler has been accumulating."""
+    latest = get_session(call_sid)
+    if latest and "voice_pipeline" in latest:
+        state["voice_pipeline"] = latest["voice_pipeline"]
+    return state.get("voice_pipeline", "deepgram")
+
+
+async def _send_audio(websocket: WebSocket, stream_id: str | None, text: str, provider: str):
+    """Synthesizes text and streams it back to SignalWire as paced mulaw
+    frames. If the chosen provider's audio can't be parsed as WAV (e.g. a
+    future regression reintroduces raw mp3), falls back to Deepgram instead
+    of the caller hearing dead silence."""
     try:
-        audio_bytes, _, provider = await asyncio.to_thread(synthesize_for_plan_bytes, plan, text)
-        pcm, native_rate = await asyncio.to_thread(extract_pcm_from_wav_bytes, audio_bytes)
+        audio_bytes, _, provider_used = await asyncio.to_thread(synthesize_for_provider_bytes, provider, text)
+        try:
+            pcm, native_rate = await asyncio.to_thread(extract_pcm_from_wav_bytes, audio_bytes)
+        except Exception as conv_err:
+            logger.warning(
+                f"[SignalWire TTS] {provider_used} output wasn't valid WAV "
+                f"({conv_err}); retrying with deepgram."
+            )
+            audio_bytes, _, provider_used = await asyncio.to_thread(synthesize_for_provider_bytes, "deepgram", text)
+            pcm, native_rate = await asyncio.to_thread(extract_pcm_from_wav_bytes, audio_bytes)
+
         mulaw = pcm16_to_mulaw(pcm, native_rate)
 
         for i in range(0, len(mulaw), CHUNK_SIZE):
@@ -57,6 +78,7 @@ async def signalwire_ws(websocket: WebSocket, call_sid: str):
             "idempotency_key": call_sid, "booking_result": None,
             "tenant_id": db.DEFAULT_TENANT_ID,
             "plan": "free",
+            "voice_pipeline": "deepgram",
             "initial_prompt_emitted": False,
         }
         save_session(call_sid, state)
@@ -90,7 +112,8 @@ async def signalwire_ws(websocket: WebSocket, call_sid: str):
                 save_session(call_sid, state)
                 opening = prompt_for_field(next_missing_field(state) or "intent")
                 state.setdefault("transcript", []).append({"role": "ai", "text": opening})
-                asyncio.create_task(_send_audio(websocket, stream_id, opening, state.get("plan", "free")))
+                provider = _refresh_pipeline(call_sid, state)
+                asyncio.create_task(_send_audio(websocket, stream_id, opening, provider))
 
             if event == "media":
                 if not transcriber:
@@ -115,12 +138,14 @@ async def signalwire_ws(websocket: WebSocket, call_sid: str):
                             next(stream_gen)  # sources header, unused over voice
                         except StopIteration:
                             pass
+                        provider = _refresh_pipeline(call_sid, state)
                         for sentence in stream_gen:
                             if sentence:
-                                asyncio.create_task(_send_audio(websocket, stream_id, sentence, state.get("plan", "free")))
+                                asyncio.create_task(_send_audio(websocket, stream_id, sentence, provider))
                     elif result.get("reply_text"):
                         state.setdefault("transcript", []).append({"role": "ai", "text": result["reply_text"]})
-                        asyncio.create_task(_send_audio(websocket, stream_id, result["reply_text"], state.get("plan", "free")))
+                        provider = _refresh_pipeline(call_sid, state)
+                        asyncio.create_task(_send_audio(websocket, stream_id, result["reply_text"], provider))
 
                     if result.get("terminal"):
                         break

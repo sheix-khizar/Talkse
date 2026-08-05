@@ -1,3 +1,4 @@
+from pydantic import BaseModel
 from fastapi import APIRouter, UploadFile, HTTPException, Depends
 import time, uuid
 import logging
@@ -8,6 +9,7 @@ from app.session.store import new_session, get_session, save_session
 from app.services.conversation_loop import prompt_for_field, handle_turn
 from app.services import db
 from app.services.ai_clients import transcribe
+from app.services.tts.router import default_provider_for_plan
 
 router = APIRouter(prefix="/api/v1/calls", tags=["calls"])
 
@@ -57,6 +59,7 @@ def start_call(tenant_id: str = "042", plan: str | None = None):
         "idempotency_key": call_id, "booking_result": None,
         "tenant_id": tenant_id,
         "plan": resolved_plan,
+        "voice_pipeline": default_provider_for_plan(resolved_plan),
         # NOTE: do NOT set initial_prompt_emitted=True here. The WebSocket
         # handler (voice_gateway.py) is the only place that actually
         # synthesizes and sends greeting AUDIO. reply_text below is
@@ -67,6 +70,31 @@ def start_call(tenant_id: str = "042", plan: str | None = None):
     new_session(call_id, state)
     opening = prompt_for_field("intent")
     return {"call_id": call_id, "reply_text": opening, "tenant_id": tenant_id, "plan": resolved_plan}
+
+
+class PipelineUpdateRequest(BaseModel):
+    provider: str  # "deepgram" | "elevenlabs"
+
+
+@router.put("/{call_id}/pipeline")
+def set_call_pipeline(call_id: str, request: PipelineUpdateRequest):
+    """Switches the TTS voice provider for a call THAT IS ALREADY IN
+    PROGRESS. This is intentionally separate from PUT
+    /api/v1/tenants/{tenant_id}/plan, which only sets the *default* for
+    NEW calls. signalwire_gateway.py / voice_gateway.py re-read this value
+    from Redis on every turn, so the change takes effect on the very next
+    AI reply — no need to hang up and redial."""
+    from app.services.tts.router import VALID_PROVIDERS
+    if request.provider not in VALID_PROVIDERS:
+        raise HTTPException(422, f"provider must be one of {VALID_PROVIDERS}")
+
+    state = get_session(call_id)
+    if not state:
+        raise HTTPException(404, "call not found or expired")
+
+    state["voice_pipeline"] = request.provider
+    save_session(call_id, state)
+    return {"status": "success", "call_id": call_id, "voice_pipeline": request.provider}
 
 @router.post("/{call_id}/turn")
 def turn(call_id: str, payload: dict):

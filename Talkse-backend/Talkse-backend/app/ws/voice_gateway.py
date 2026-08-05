@@ -5,7 +5,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from app.services.streaming_stt import StreamingTranscriber
 from app.services.conversation_loop import handle_turn
 from app.session.store import get_session, save_session
-from app.services.tts.router import synthesize_for_plan_bytes
+from app.services.tts.router import synthesize_for_provider_bytes
 from app.services.ai_clients import transcribe_bytes
 from app.services import db
 
@@ -22,15 +22,12 @@ async def _emit(websocket: WebSocket, event_type: str, data: dict):
 
 async def _synthesize_and_emit(websocket: WebSocket, call_id: str, text: str, state: dict = None):
     """Synthesizes reply_text to audio and sends it as a base64-encoded
-    audio.chunk event. Runs synthesize_for_plan_bytes() in a thread since
-    it's a blocking network call (Deepgram/ElevenLabs SDKs are sync) and
-    this handler is async — without this, one slow TTS call would stall
-    every other concurrent call on the same event loop. Audio bytes are
-    kept entirely in memory (no disk round-trip) to avoid the latency of
-    writing a .wav to disk and immediately reading it back."""
+    audio.chunk event. Reads voice_pipeline from the session store on every
+    turn so mid-call switches take effect immediately."""
     try:
-        plan = state.get("plan", "free") if state else "free"
-        task = asyncio.to_thread(synthesize_for_plan_bytes, plan, text)
+        latest = get_session(call_id)
+        provider = (latest or {}).get("voice_pipeline") or (state or {}).get("voice_pipeline", "deepgram")
+        task = asyncio.to_thread(synthesize_for_provider_bytes, provider, text)
         audio_bytes, elapsed, provider_used = await asyncio.wait_for(task, timeout=8.0)
 
         try:
@@ -85,9 +82,6 @@ async def voice_ws(websocket: WebSocket, call_id: str):
     })
 
     # The WebSocket is the single source of truth for the spoken greeting.
-    # (The REST POST /api/v1/calls endpoint must NOT set
-    # initial_prompt_emitted=True — see calls.py patch — or this block
-    # never runs and the caller never hears an opening line.)
     if state.get("turn_count", 0) == 0 and state.get("status") == "collecting" and not state.get("initial_prompt_emitted"):
         state["initial_prompt_emitted"] = True
         save_session(call_id, state)
@@ -99,14 +93,18 @@ async def voice_ws(websocket: WebSocket, call_id: str):
             "role": "ai",
             "text": opening,
         })
+        latest_session = get_session(call_id) or state
         await _emit(websocket, "state.changed", {
             "status": state.get("status"),
             "isAiSpeaking": True,
+            "voicePipeline": latest_session.get("voice_pipeline", "deepgram"),
         })
         await _synthesize_and_emit(websocket, call_id, opening, state)
+        latest_session = get_session(call_id) or state
         await _emit(websocket, "state.changed", {
             "status": state.get("status"),
             "isAiSpeaking": False,
+            "voicePipeline": latest_session.get("voice_pipeline", "deepgram"),
         })
 
     transcriber = await _start_transcriber()
@@ -130,7 +128,6 @@ async def voice_ws(websocket: WebSocket, call_id: str):
                         transcript = None
                 else:
                     pcm_buffer.extend(data_bytes)
-                    # When ~1.5s of audio (48000 bytes @ 16kHz 16-bit PCM) accumulates, transcribe via Groq
                     if len(pcm_buffer) >= 48000:
                         raw_audio = bytes(pcm_buffer)
                         pcm_buffer.clear()
@@ -179,9 +176,11 @@ async def voice_ws(websocket: WebSocket, call_id: str):
                     }
                 save_session(call_id, state)
 
+                latest_session = get_session(call_id) or state
                 await _emit(websocket, "state.changed", {
                     "status": state.get("status"),
                     "isAiSpeaking": True,
+                    "voicePipeline": latest_session.get("voice_pipeline", "deepgram"),
                     "nlu": {
                         "intent": {"label": state.get("intent"), "confidence": 95},
                         "service": state.get("service"),
@@ -222,9 +221,11 @@ async def voice_ws(websocket: WebSocket, call_id: str):
                         })
                         await _synthesize_and_emit(websocket, call_id, reply_text, state)
 
+                latest_session = get_session(call_id) or state
                 await _emit(websocket, "state.changed", {
                     "status": state.get("status"),
                     "isAiSpeaking": False,
+                    "voicePipeline": latest_session.get("voice_pipeline", "deepgram"),
                     "nlu": {
                         "intent": {"label": state.get("intent"), "confidence": 95},
                         "service": state.get("service"),
@@ -247,7 +248,6 @@ async def voice_ws(websocket: WebSocket, call_id: str):
                 await asyncio.to_thread(transcriber.close)
             except Exception as e:
                 logger.warning(f"[Streaming STT] Error closing transcriber for {call_id}: {e}")
-        # Save call log if not already saved via /end endpoint
         state = get_session(call_id)
         if state and state.get("status") not in ("ended",):
             state["status"] = "ended"

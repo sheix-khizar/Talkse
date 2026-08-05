@@ -107,13 +107,13 @@ export default function LiveCallView() {
           )}
 
           {liveCall.turnError && (
-            <div className="connection-banner disconnected" style={{backgroundColor: '#ffebee', color: '#c62828'}}>
+            <div className="connection-banner disconnected" style={{ backgroundColor: '#ffebee', color: '#c62828' }}>
               ⚠️ Text Turn Failed: {liveCall.turnError}
             </div>
           )}
 
           {liveCall.activePlan && (
-            <div className="connection-banner" style={{backgroundColor: '#e8f5e9', color: '#2e7d32'}}>
+            <div className="connection-banner" style={{ backgroundColor: '#e8f5e9', color: '#2e7d32' }}>
               🎙️ Active pipeline: {liveCall.activePlan === 'paid' ? 'Premium (ElevenLabs)' : 'Standard (Deepgram)'}
             </div>
           )}

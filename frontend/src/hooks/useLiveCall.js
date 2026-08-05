@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { getPatientByPhone } from '../api/patients';
 import { apiFetch } from '../api/client';
+import { setCallPipeline } from '../api/callActions';
 
 export function useLiveCall(callId = null, getToken) {
   const [status, setStatus] = useState('ACTIVE');
@@ -10,6 +11,7 @@ export function useLiveCall(callId = null, getToken) {
   const [nlu, setNlu] = useState(null);
   const [isAiSpeaking, setIsAiSpeaking] = useState(false);
   const [activePlan, setActivePlan] = useState(null);
+  const [activeProvider, setActiveProvider] = useState('deepgram');
   const [connectionState, setConnectionState] = useState(callId ? 'CONNECTING' : 'DISCONNECTED');
   const [turnError, setTurnError] = useState(null);
 
@@ -182,6 +184,7 @@ export function useLiveCall(callId = null, getToken) {
         if (data?.status) setStatus(data.status);
         if (data?.isAiSpeaking !== undefined) setIsAiSpeaking(data.isAiSpeaking);
         if (data?.nlu) setNlu((prev) => ({ ...prev, ...data.nlu }));
+        if (data?.voicePipeline) setActiveProvider(data.voicePipeline);
         break;
 
       case 'audio.chunk':
@@ -198,15 +201,23 @@ export function useLiveCall(callId = null, getToken) {
     }
   };
 
+  const switchPipeline = async (provider) => {
+    if (!callId) return;
+    try {
+      await setCallPipeline(callId, provider, getToken);
+      setActiveProvider(provider);
+    } catch (err) {
+      console.error('Failed to switch pipeline:', err);
+      setTurnError(err.message);
+    }
+  };
+
   const [isMicActive, setIsMicActive] = useState(false);
   const audioContextRef = useRef(null);
   const mediaStreamRef = useRef(null);
   const processorRef = useRef(null);
 
   // --- Echo prevention: mic frames are dropped while the AI is speaking. ---
-  // Driven by real <audio> playback events (not server-reported isAiSpeaking),
-  // plus a short grace period after playback ends to cover echo tail /
-  // output-device buffering.
   const micMutedRef = useRef(false);
   const muteGraceTimeoutRef = useRef(null);
   const ECHO_GRACE_PERIOD_MS = 400;
@@ -227,9 +238,7 @@ export function useLiveCall(callId = null, getToken) {
     }, ECHO_GRACE_PERIOD_MS);
   };
 
-  // --- Playback queue: serializes audio.chunk playback so overlapping
-  // chunks (e.g. FAQ/RAG streaming, which sends one chunk per sentence)
-  // never play on top of each other. ---
+  // --- Playback queue ---
   const audioQueueRef = useRef([]);
   const isPlayingRef = useRef(false);
   const currentAudioUrlRef = useRef(null);
@@ -249,7 +258,7 @@ export function useLiveCall(callId = null, getToken) {
     }
 
     isPlayingRef.current = true;
-    muteMic(); // mic stays muted for as long as anything is in the queue
+    muteMic();
 
     const base64Audio = audioQueueRef.current.shift();
     try {
@@ -263,7 +272,7 @@ export function useLiveCall(callId = null, getToken) {
       const audio = new Audio(url);
       audio.onended = () => {
         URL.revokeObjectURL(url);
-        playNextInQueue(); // move to the next queued chunk, if any
+        playNextInQueue();
       };
       audio.onerror = (err) => {
         console.error('Audio playback error:', err);
@@ -335,7 +344,7 @@ export function useLiveCall(callId = null, getToken) {
         processorRef.current = workletNode;
 
         workletNode.port.onmessage = (e) => {
-          if (micMutedRef.current) return; // AI is speaking (or in echo grace period) — drop this frame
+          if (micMutedRef.current) return;
           if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
           wsRef.current.send(e.data);
         };
@@ -347,7 +356,7 @@ export function useLiveCall(callId = null, getToken) {
         processorRef.current = processor;
 
         processor.onaudioprocess = (e) => {
-          if (micMutedRef.current) return; // AI is speaking (or in echo grace period) — drop this frame
+          if (micMutedRef.current) return;
           if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
           const inputData = e.inputBuffer.getChannelData(0);
           const pcm16 = new Int16Array(inputData.length);
@@ -473,6 +482,8 @@ export function useLiveCall(callId = null, getToken) {
     stopMicrophone,
     sendTextTurn,
     turnError,
-    activePlan
+    activePlan,
+    activeProvider,
+    switchPipeline,
   };
 }
