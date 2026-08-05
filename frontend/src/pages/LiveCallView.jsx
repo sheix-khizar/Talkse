@@ -11,7 +11,7 @@ import CallControls from '../components/CallControls';
 import ErrorBoundary from '../components/ErrorBoundary';
 import { useLiveCall } from '../hooks/useLiveCall';
 import { useTenant } from '../context/TenantContext';
-import { getActiveCalls, startNewCall } from '../api/calls';
+import { getActiveCalls } from '../api/calls';
 import { useAuth } from '@clerk/clerk-react';
 import './LiveCallView.css';
 
@@ -21,42 +21,45 @@ export default function LiveCallView() {
   const [activeCallId, setActiveCallId] = useState(null);
   const [activeCalls, setActiveCalls] = useState([]);
   const [loadError, setLoadError] = useState(null);
-  const [voiceTier, setVoiceTier] = useState('auto');
 
   useEffect(() => {
     let cancelled = false;
-    getActiveCalls(getToken)
-      .then((calls) => {
-        if (cancelled) return;
-        setLoadError(null);
-        setActiveCalls(calls || []);
-        setActiveCallId(calls && calls.length > 0 ? calls[0].id : null);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        console.error(err);
-        setLoadError('Could not load active calls — backend is unreachable.');
-        setActiveCalls([]);
-        setActiveCallId(null);
-      });
-    return () => { cancelled = true; };
-  }, [selectedTenant.id]);
 
-  const [startError, setStartError] = useState(null);
+    const fetchActiveCalls = () => {
+      getActiveCalls(getToken)
+        .then((calls) => {
+          if (cancelled) return;
+          setLoadError(null);
+          const callList = calls || [];
+          setActiveCalls(callList);
 
-  const handleStartCall = async () => {
-    setStartError(null);
-    try {
-      const { call_id } = await startNewCall(selectedTenant.id, voiceTier, getToken);
-      setActiveCalls((prev) => [
-        ...prev,
-        { id: call_id, status: 'ACTIVE', callerName: 'New Call (Dashboard)', service: 'General Inquiry', duration: '00:00' },
-      ]);
-      setActiveCallId(call_id);
-    } catch (err) {
-      setStartError('Could not start a new call — is the backend running?');
-    }
-  };
+          // Auto-select incoming SignalWire call
+          if (callList.length > 0) {
+            setActiveCallId((prevId) => {
+              const stillActive = callList.some((c) => c.id === prevId);
+              return stillActive ? prevId : callList[0].id;
+            });
+          } else {
+            setActiveCallId(null);
+          }
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          console.error(err);
+          setLoadError('Could not load active calls — backend is unreachable.');
+          setActiveCalls([]);
+          setActiveCallId(null);
+        });
+    };
+
+    fetchActiveCalls();
+    const interval = setInterval(fetchActiveCalls, 2000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [selectedTenant.id, getToken]);
 
   const liveCall = useLiveCall(activeCallId, getToken);
   const confidenceScore = liveCall.nlu?.intent?.confidence || 100;
@@ -74,20 +77,13 @@ export default function LiveCallView() {
               activeCallId={activeCallId}
               onSelectCall={setActiveCallId}
             />
-            <select 
-              value={voiceTier} 
-              onChange={e => setVoiceTier(e.target.value)}
-              style={{ marginRight: '1rem', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
-            >
-              <option value="auto">Voice: Tenant Default</option>
-              <option value="free">Voice: Standard (Deepgram)</option>
-              <option value="paid">Voice: Premium (ElevenLabs)</option>
-            </select>
-            <button className="btn-start-call" onClick={handleStartCall}>
-              + Start Call
-            </button>
+            {activeCalls.length === 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#64748b', fontSize: '0.875rem' }}>
+                <span className="pulse-dot" style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#22c55e', display: 'inline-block' }}></span>
+                Listening for incoming SignalWire calls...
+              </div>
+            )}
           </div>
-          {startError && <div className="connection-banner disconnected">{startError}</div>}
 
           {/* Connection status warning if disconnected, reconnecting or not found */}
           {liveCall.connectionState === 'RECONNECTING' && (
