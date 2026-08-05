@@ -66,6 +66,7 @@ async def voice(request: Request):
         "idempotency_key": call_sid, "booking_result": None,
         "tenant_id": tenant_id,
         "plan": "free",  # force Deepgram chain over telephony
+        "voice_pipeline": "deepgram",
         "caller_phone": from_number,
         "initial_prompt_emitted": False,
     }
@@ -87,11 +88,6 @@ async def voice(request: Request):
             "sections": {
                 "main": [
                     {"answer": {}},
-                    {
-                        "connect": {
-                            "to": ws_url
-                        }
-                    },
                     {
                         "stream": {
                             "url": ws_url,

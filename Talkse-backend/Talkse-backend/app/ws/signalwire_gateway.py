@@ -122,14 +122,33 @@ async def signalwire_ws(websocket: WebSocket, call_sid: str):
                 if not media_payload:
                     continue
 
-                pcm = mulaw_b64_to_pcm16(base64.b64decode(media_payload))
-                transcript = transcriber.feed(pcm)
+                try:
+                    pcm = mulaw_b64_to_pcm16(base64.b64decode(media_payload))
+                    transcript = transcriber.feed(pcm)
+                except Exception as err:
+                    logger.warning(f"[SignalWire] STT feed error for call {call_sid}: {err}")
+                    transcript = None
+
                 if transcript:
                     state.setdefault("transcript", []).append({"role": "customer", "text": transcript})
 
-                    result = await asyncio.wait_for(
-                        asyncio.to_thread(handle_turn, transcript, state), timeout=10.0
-                    )
+                    try:
+                        result = await asyncio.wait_for(
+                            asyncio.to_thread(handle_turn, transcript, state), timeout=10.0
+                        )
+                    except asyncio.TimeoutError:
+                        logger.error(f"[SignalWire] handle_turn timed out for call {call_sid}")
+                        result = {
+                            "reply_text": "Sorry, that's taking longer than expected — could you repeat that?",
+                            "terminal": False,
+                        }
+                    except Exception as e:
+                        logger.error(f"[SignalWire] handle_turn failed for call {call_sid}: {e}")
+                        result = {
+                            "reply_text": "Sorry, I hit a snag processing that. Could you say that again?",
+                            "terminal": False,
+                        }
+
                     save_session(call_sid, state)
 
                     if result.get("is_faq") and result.get("faq_stream"):
@@ -157,6 +176,8 @@ async def signalwire_ws(websocket: WebSocket, call_sid: str):
         pass
     except asyncio.TimeoutError:
         logger.error(f"[SignalWire] handle_turn timed out for call {call_sid}")
+    except Exception as e:
+        logger.error(f"[SignalWire] Unexpected error in call {call_sid}: {e}", exc_info=True)
     finally:
         if transcriber:
             try:

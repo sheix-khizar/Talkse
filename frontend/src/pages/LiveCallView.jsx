@@ -112,9 +112,30 @@ export default function LiveCallView() {
             </div>
           )}
 
-          {liveCall.activePlan && (
-            <div className="connection-banner" style={{ backgroundColor: '#e8f5e9', color: '#2e7d32' }}>
-              🎙️ Active pipeline: {liveCall.activePlan === 'paid' ? 'Premium (ElevenLabs)' : 'Standard (Deepgram)'}
+          {liveCall.callId && (
+            <div className="pipeline-selector-banner">
+              <span className="pipeline-title">🎙️ Voice Pipeline:</span>
+              <div className="pipeline-toggle-group">
+                <button
+                  type="button"
+                  className={`pipeline-toggle-btn ${liveCall.activeProvider === 'deepgram' ? 'active' : ''}`}
+                  onClick={() => liveCall.switchPipeline('deepgram')}
+                  disabled={liveCall.status === 'ENDED'}
+                >
+                  Standard (Deepgram)
+                </button>
+                <button
+                  type="button"
+                  className={`pipeline-toggle-btn ${liveCall.activeProvider === 'elevenlabs' ? 'active' : ''}`}
+                  onClick={() => liveCall.switchPipeline('elevenlabs')}
+                  disabled={liveCall.status === 'ENDED'}
+                >
+                  ⚡ Premium (ElevenLabs)
+                </button>
+              </div>
+              <span className="pipeline-hint">
+                Switches the voice on the very next AI reply — no need to hang up.
+              </span>
             </div>
           )}
 
