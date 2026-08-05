@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import NavBar from '../components/NavBar';
 import CallQueueStrip from '../components/CallQueueStrip';
 import LiveCallBanner from '../components/LiveCallBanner';
 import PatientCard from '../components/PatientCard';
@@ -13,6 +12,7 @@ import { useLiveCall } from '../hooks/useLiveCall';
 import { useTenant } from '../context/TenantContext';
 import { getActiveCalls } from '../api/calls';
 import { useAuth } from '@clerk/clerk-react';
+import { Radio, Zap, Mic, AlertCircle } from 'lucide-react';
 import './LiveCallView.css';
 
 export default function LiveCallView() {
@@ -66,75 +66,78 @@ export default function LiveCallView() {
 
   return (
     <ErrorBoundary>
-      <div className="talkse-app">
-
-        {/* Main Dashboard Workspace */}
-        <main className="dashboard-content">
-          {/* Multi-Call Queue Strip */}
-          <div className="queue-strip-row">
+      <div className="live-call-wrapper-3d">
+        <main className="dashboard-content-3d">
+          {/* Multi-Call Queue Strip Bar */}
+          <div className="queue-strip-row-3d">
             <CallQueueStrip
               calls={activeCalls}
               activeCallId={activeCallId}
               onSelectCall={setActiveCallId}
             />
             {activeCalls.length === 0 && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#64748b', fontSize: '0.875rem' }}>
-                <span className="pulse-dot" style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#22c55e', display: 'inline-block' }}></span>
-                Listening for incoming SignalWire calls...
+              <div className="listening-pulse-chip">
+                <span className="dot-pulse-green"></span>
+                <span>Listening for incoming SignalWire calls...</span>
               </div>
             )}
           </div>
 
-          {/* Connection status warning if disconnected, reconnecting or not found */}
+          {/* Connection status warning banners */}
           {liveCall.connectionState === 'RECONNECTING' && (
-            <div className="connection-banner reconnecting">
-              🔄 Connection dropped. Reconnecting to live WebSocket...
+            <div className="connection-banner-3d reconnecting">
+              <AlertCircle size={16} /> Connection dropped. Reconnecting to live WebSocket...
             </div>
           )}
           {liveCall.connectionState === 'DISCONNECTED' && activeCallId && (
-            <div className="connection-banner disconnected">
-              ⚠️ Live WebSocket disconnected.
+            <div className="connection-banner-3d disconnected">
+              <AlertCircle size={16} /> Live WebSocket disconnected.
             </div>
           )}
           {liveCall.connectionState === 'NOT_FOUND' && (
-            <div className="connection-banner disconnected">
-              ⚠️ Call session not found on server (4404).
+            <div className="connection-banner-3d disconnected">
+              <AlertCircle size={16} /> Call session not found on server (404).
             </div>
           )}
 
           {loadError && (
-            <div className="connection-banner disconnected">⚠️ {loadError}</div>
+            <div className="connection-banner-3d disconnected">
+              <AlertCircle size={16} /> {loadError}
+            </div>
           )}
 
           {liveCall.turnError && (
-            <div className="connection-banner disconnected" style={{ backgroundColor: '#ffebee', color: '#c62828' }}>
-              ⚠️ Text Turn Failed: {liveCall.turnError}
+            <div className="connection-banner-3d disconnected">
+              <AlertCircle size={16} /> Text Turn Failed: {liveCall.turnError}
             </div>
           )}
 
           {/* Voice Pipeline Selector Banner */}
-          <div className="pipeline-selector-banner">
-            <span className="pipeline-title">🎙️ Voice Pipeline:</span>
-            <div className="pipeline-toggle-group">
+          <div className="pipeline-selector-banner-3d">
+            <div className="pipeline-title-group">
+              <Mic size={18} style={{ color: '#0f766e' }} />
+              <span className="pipeline-title-3d">AI Voice Engine:</span>
+            </div>
+            <div className="pipeline-toggle-group-3d">
               <button
                 type="button"
-                className={`pipeline-toggle-btn ${liveCall.activeProvider === 'deepgram' ? 'active' : ''}`}
+                className={`pipeline-toggle-btn-3d ${liveCall.activeProvider === 'deepgram' ? 'active' : ''}`}
                 onClick={() => liveCall.switchPipeline('deepgram')}
                 disabled={liveCall.status === 'ENDED'}
               >
-                Standard (Deepgram)
+                <Radio size={14} /> Standard (Deepgram)
               </button>
               <button
                 type="button"
-                className={`pipeline-toggle-btn ${liveCall.activeProvider === 'elevenlabs' ? 'active' : ''}`}
+                className={`pipeline-toggle-btn-3d ${liveCall.activeProvider === 'elevenlabs' ? 'active' : ''}`}
                 onClick={() => liveCall.switchPipeline('elevenlabs')}
                 disabled={liveCall.status === 'ENDED'}
               >
-                ⚡ Premium (ElevenLabs)
+                <Zap size={14} /> Premium (ElevenLabs)
               </button>
             </div>
-            <span className="pipeline-hint">
-              Switches the voice on the very next AI reply — no need to hang up.
+            <span className="pipeline-hint-3d">
+              ⚡ Dynamically switches voice synthesis on next turn
             </span>
           </div>
 
@@ -146,15 +149,15 @@ export default function LiveCallView() {
             tenant={selectedTenant}
           />
 
-          {/* 3-Column Grid Layout */}
-          <div className="dashboard-grid">
+          {/* 3-Column 3D Grid Layout */}
+          <div className="dashboard-grid-3d">
             {/* Left Column: Patient Card */}
-            <div className="grid-col col-left">
+            <div className="grid-col-3d col-left-3d">
               <PatientCard patient={liveCall.patient} />
             </div>
 
             {/* Center Column: Waveform Orb + Low Confidence Banner + NLU Panel */}
-            <div className="grid-col col-center">
+            <div className="grid-col-3d col-center-3d">
               <WaveformCenterpiece
                 isTalking={liveCall.isAiSpeaking}
                 intent={liveCall.nlu?.intent?.label || 'Schedule Appointment'}
@@ -168,7 +171,7 @@ export default function LiveCallView() {
             </div>
 
             {/* Right Column: Live Transcript + Call Controls */}
-            <div className="grid-col col-right">
+            <div className="grid-col-3d col-right-3d">
               <LiveTranscript
                 transcript={liveCall.transcript}
                 onSendText={liveCall.sendTextTurn}
