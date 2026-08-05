@@ -9,9 +9,10 @@
 }
 
 .glass-cloud-wrapper {
-  width: 90%;
-  height: 260px;
-  border-radius: 130px;
+  width: 100%;
+  max-width: 680px;
+  height: 240px;
+  border-radius: 120px;
   background: radial-gradient(
     circle at 50% 50%,
     rgba(224, 242, 254, 0.8) 0%,
