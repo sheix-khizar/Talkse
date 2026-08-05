@@ -115,16 +115,20 @@ async def signalwire_ws(websocket: WebSocket, call_sid: str):
             if not stream_id:
                 stream_id = msg.get("streamSid") or msg.get("stream_id")
 
-            if not state.get("initial_prompt_emitted"):
+            if not state.get("initial_prompt_emitted") and stream_id:
                 state["initial_prompt_emitted"] = True
                 save_session(call_sid, state)
                 opening = prompt_for_field(next_missing_field(state) or "intent")
                 state.setdefault("transcript", []).append({"role": "ai", "text": opening})
                 await broadcast_emit(call_sid, "transcript.final", {"role": "ai", "text": opening})
-                await broadcast_emit(call_sid, "state.changed", {"status": state.get("status"), "isAiSpeaking": True})
                 provider = _refresh_pipeline(call_sid, state)
+                await broadcast_emit(call_sid, "state.changed", {
+                    "status": state.get("status"), "isAiSpeaking": True, "voicePipeline": provider,
+                })
                 asyncio.create_task(_send_audio(websocket, stream_id, opening, provider))
-                await broadcast_emit(call_sid, "state.changed", {"status": state.get("status"), "isAiSpeaking": False})
+                await broadcast_emit(call_sid, "state.changed", {
+                    "status": state.get("status"), "isAiSpeaking": False, "voicePipeline": provider,
+                })
 
             if event == "media":
                 if not transcriber:
