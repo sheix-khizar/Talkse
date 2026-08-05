@@ -1,4 +1,5 @@
 import logging
+from app.core.config import settings
 from app.services.tts.deepgram_tts import DeepgramTTS
 from app.services.tts.elevenlabs_tts import ElevenLabsTTS
 

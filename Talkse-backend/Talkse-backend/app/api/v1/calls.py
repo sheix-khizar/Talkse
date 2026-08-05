@@ -78,7 +78,7 @@ class PipelineUpdateRequest(BaseModel):
 
 
 @router.put("/{call_id}/pipeline")
-def set_call_pipeline(call_id: str, request: PipelineUpdateRequest):
+async def set_call_pipeline(call_id: str, request: PipelineUpdateRequest):
     """Switches the TTS voice provider for a call THAT IS ALREADY IN
     PROGRESS. This is intentionally separate from PUT
     /api/v1/tenants/{tenant_id}/plan, which only sets the *default* for
@@ -95,6 +95,16 @@ def set_call_pipeline(call_id: str, request: PipelineUpdateRequest):
 
     state["voice_pipeline"] = request.provider
     save_session(call_id, state)
+
+    try:
+        from app.ws.call_broadcaster import emit as broadcast_emit
+        await broadcast_emit(call_id, "state.changed", {
+            "status": state.get("status"),
+            "voicePipeline": request.provider,
+        })
+    except Exception as err:
+        logger.warning(f"[Pipeline] Could not broadcast pipeline change: {err}")
+
     return {"status": "success", "call_id": call_id, "voice_pipeline": request.provider}
 
 @router.post("/{call_id}/turn")

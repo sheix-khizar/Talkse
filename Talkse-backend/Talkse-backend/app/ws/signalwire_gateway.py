@@ -161,6 +161,7 @@ async def signalwire_ws(websocket: WebSocket, call_sid: str):
                             "terminal": False,
                         }
 
+                    provider = _refresh_pipeline(call_sid, state)
                     save_session(call_sid, state)
 
                     nlu_payload = {
@@ -170,7 +171,7 @@ async def signalwire_ws(websocket: WebSocket, call_sid: str):
                         "callerName": state.get("caller_name"),
                     }
                     await broadcast_emit(call_sid, "state.changed", {
-                        "status": state.get("status"), "isAiSpeaking": True, "nlu": nlu_payload,
+                        "status": state.get("status"), "isAiSpeaking": True, "nlu": nlu_payload, "voicePipeline": provider,
                     })
 
                     if result.get("is_faq") and result.get("faq_stream"):
@@ -179,7 +180,6 @@ async def signalwire_ws(websocket: WebSocket, call_sid: str):
                             next(stream_gen)  # sources header, unused over voice
                         except StopIteration:
                             pass
-                        provider = _refresh_pipeline(call_sid, state)
                         for sentence in stream_gen:
                             if sentence:
                                 await broadcast_emit(call_sid, "transcript.final", {"role": "ai", "text": sentence})
@@ -187,11 +187,10 @@ async def signalwire_ws(websocket: WebSocket, call_sid: str):
                     elif result.get("reply_text"):
                         state.setdefault("transcript", []).append({"role": "ai", "text": result["reply_text"]})
                         await broadcast_emit(call_sid, "transcript.final", {"role": "ai", "text": result["reply_text"]})
-                        provider = _refresh_pipeline(call_sid, state)
                         asyncio.create_task(_send_audio(websocket, stream_id, result["reply_text"], provider))
 
                     await broadcast_emit(call_sid, "state.changed", {
-                        "status": state.get("status"), "isAiSpeaking": False, "nlu": nlu_payload,
+                        "status": state.get("status"), "isAiSpeaking": False, "nlu": nlu_payload, "voicePipeline": provider,
                     })
 
                     if result.get("terminal"):

@@ -13,6 +13,13 @@ router = APIRouter()
 logger = logging.getLogger("talkse")
 
 
+def _refresh_pipeline(call_id: str, state: dict) -> str:
+    latest = get_session(call_id)
+    if latest and "voice_pipeline" in latest:
+        state["voice_pipeline"] = latest["voice_pipeline"]
+    return state.get("voice_pipeline", "deepgram")
+
+
 async def _emit(websocket: WebSocket, event_type: str, data: dict):
     """Sends a typed event matching the frontend's expected {type, data}
     shape (see frontend/src/hooks/useLiveCall.js handleSocketEvent and the
@@ -25,8 +32,7 @@ async def _synthesize_and_emit(websocket: WebSocket, call_id: str, text: str, st
     audio.chunk event. Reads voice_pipeline from the session store on every
     turn so mid-call switches take effect immediately."""
     try:
-        latest = get_session(call_id)
-        provider = (latest or {}).get("voice_pipeline") or (state or {}).get("voice_pipeline", "deepgram")
+        provider = _refresh_pipeline(call_id, state) if state else "deepgram"
         task = asyncio.to_thread(synthesize_for_provider_bytes, provider, text)
         audio_bytes, elapsed, provider_used = await asyncio.wait_for(task, timeout=8.0)
 
@@ -194,6 +200,7 @@ async def voice_ws(websocket: WebSocket, call_id: str):
                         "reply_text": "Sorry, I hit a snag processing that. Could you say that again?",
                         "terminal": False,
                     }
+                _refresh_pipeline(call_id, state)
                 save_session(call_id, state)
 
                 latest_session = get_session(call_id) or state
