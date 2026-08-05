@@ -1,7 +1,18 @@
 export async function apiFetch(url, options = {}, getToken) {
-  const token = await getToken();
+  let token = null;
+  if (typeof getToken === 'function') {
+    try {
+      token = await getToken();
+    } catch (e) {
+      token = null;
+    }
+  }
+  const headers = { ...options.headers };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
   return fetch(url, {
     ...options,
-    headers: { ...options.headers, Authorization: `Bearer ${token}` },
+    headers,
   });
 }

@@ -1,8 +1,8 @@
-# AI Voice Receptionist Platform (Talkse)
+# Talkse — AI Voice Receptionist Platform
 
-Multi-tenant Voice AI receptionist for US aesthetic clinics (medspas, botox/laser/skin clinics), built on managed AI APIs (Gemini, Groq, Deepgram, Telnyx). Answers calls, understands natural speech, books/reschedules/cancels appointments, answers FAQs, and hands off to a human when needed.
+Multi-tenant Voice AI receptionist for US aesthetic clinics (medspas, botox/laser/skin clinics). Answers inbound calls, understands natural speech, books/reschedules/cancels appointments, answers FAQs from a clinic's knowledge base, and hands off to a human when confidence is low.
 
-> **Architecture note:** This platform previously targeted self-hosted Ollama/Whisper/Piper on CPU. As of this revision it runs on managed AI APIs instead — see `Docs/ARCHITECTURE_DECISIONS.md` for the full reasoning and the cost-based trigger for revisiting self-hosting at higher call volume.
+> **This README reflects the actual code on the `merge` branch.** The previous version of this doc described a Telnyx/self-hosted-model architecture that no longer matches the codebase — see [Architecture](#architecture) below for what's actually running.
 
 > **Primary product: the Voice AI.** The Admin Dashboard exists only to support it. If a change doesn't improve the Voice AI's reliability or the caller experience, question whether it belongs in this release.
 
@@ -14,269 +14,213 @@ Multi-tenant Voice AI receptionist for US aesthetic clinics (medspas, botox/lase
 - [Tech Stack](#tech-stack)
 - [Architecture](#architecture)
 - [Folder Structure](#folder-structure)
-- [Voice AI Pipeline](#voice-ai-pipeline)
-- [Development Roadmap](#development-roadmap)
+- [Two Ways a Call Reaches the AI](#two-ways-a-call-reaches-the-ai)
 - [Installation](#installation)
-- [Docker Setup](#docker-setup)
 - [Environment Variables](#environment-variables)
-- [PostgreSQL Setup](#postgresql-setup)
-- [Redis Setup](#redis-setup)
-- [Managed AI Providers Setup](#managed-ai-providers-setup)
+- [Managed AI & Telephony Providers Setup](#managed-ai--telephony-providers-setup)
 - [Backend Setup](#backend-setup)
 - [Frontend Setup](#frontend-setup)
 - [API Structure](#api-structure)
 - [WebSocket Events](#websocket-events)
-- [Folder Naming & Coding Standards](#folder-naming--coding-standards)
-- [Branch Strategy & Git Workflow](#branch-strategy--git-workflow)
+- [Testing Without Placing a Real Phone Call](#testing-without-placing-a-real-phone-call)
 - [Testing](#testing)
-- [Deployment](#deployment)
-- [Monitoring](#monitoring)
-- [Troubleshooting](#troubleshooting)
+- [Known Gaps / Open Items](#known-gaps--open-items)
 - [Contribution Guide](#contribution-guide)
-- [Future Roadmap](#future-roadmap)
 
 ---
 
 ## Features
 
-- Real-time inbound call handling over WebSocket-based telephony bridge (Telnyx)
-- Streaming speech-to-text via Groq (`whisper-large-v3-turbo`) — hosted, no local GPU/CPU inference required
-- LLM-based intent/entity understanding via Gemini (`gemini-flash-lite-latest`) — **LLM never touches the database**
-- Deterministic conversation state machine (not implicit LLM memory)
-- Rule-based yes/no and digit-only routing in `conversation/` to cut unnecessary LLM calls and API cost
-- Idempotent, race-safe appointment booking/reschedule/cancel
-- Human call transfer with context handoff on low confidence or explicit request
-- Multi-tenant: one deployment serves many clinics with isolated data and per-clinic configuration
-- Full call logging, transcription, and audit trail
-- Admin dashboard for staff (calendar, transcripts, escalations, config)
+- Real-time inbound call handling over a WebSocket-based telephony bridge (SignalWire)
+- A parallel **browser-based test-call path** (mic → WebSocket) that exercises the entire AI pipeline with no telephony involved
+- Streaming speech-to-text via Deepgram's live WebSocket API (one persistent connection per call, kept alive across turns), with a Groq Whisper batch fallback on the browser path
+- Deterministic conversation state machine (not implicit LLM memory) — see `app/services/conversation_loop.py` / `conversation_router.py`
+- RAG-backed FAQ answering over a clinic's own content (`app/services/rag/`)
+- Two-tier TTS: Deepgram Aura-1 by default, ElevenLabs layered in first for tenants on the "paid" plan (falls back to Deepgram on failure)
+- Idempotent appointment booking (`booking_engine.py`) keyed by call ID
+- Multi-tenant: tenant resolved per call/request, with row-level security enabled in Postgres
+- Full call logging and transcript storage
+- Clerk-based auth for the dashboard, with a local-dev fallback identity so the API is usable without a Clerk account while developing
+- Admin dashboard (React) — live call view, call history, appointments, calendar, per-tenant settings, TTS usage tracking
 
 ## Tech Stack
 
 | Layer | Technology |
 |---|---|
 | Backend | FastAPI (Python, async) |
-| Frontend | React |
-| Database | PostgreSQL |
-| Cache / Session Store | Redis |
-| Speech-to-Text | Groq (`whisper-large-v3-turbo`), hosted |
-| LLM | Gemini API (`gemini-flash-lite-latest`), hosted |
-| Text-to-Speech | Deepgram Aura-1 (`aura-asteria-en`), hosted, with response audio caching |
-| Telephony | Telnyx (SIP trunking + WebSocket audio bridge) |
-| Realtime Transport | WebSockets |
-| Auth | JWT |
-| Containerization | Docker / Docker Compose |
-| Reverse Proxy | Nginx |
+| Frontend | React 18 + Vite, React Router, Recharts |
+| Database | PostgreSQL (via `psycopg2`) |
+| Session / Call State | Redis, with automatic `fakeredis` in-memory fallback if no Redis is reachable |
+| Speech-to-Text | Deepgram streaming (`nova-2`), Groq Whisper as a batch fallback on the browser path |
+| LLM / NLU | Gemini (`google-genai`) |
+| Text-to-Speech | Deepgram Aura-1 (default), ElevenLabs (paid-plan tenants only, optional) |
+| Telephony | SignalWire (SWML + bidirectional media WebSocket, Twilio-compatible) |
+| Realtime Transport | WebSockets (both the telephony bridge and the browser test-call path) |
+| Auth | Clerk (`clerk-backend-api`) |
+| Package management | `uv` (`uv.lock` present) / `pip` |
+| Testing | Pytest (`pytest-asyncio`) |
 
-> See `Docs/ARCHITECTURE_DECISIONS.md` for the cost model and the call-volume threshold at which self-hosting STT/LLM/TTS becomes cheaper than this managed stack.
+> There is no Docker/Compose setup in this branch yet, despite earlier docs referencing one — see [Known Gaps](#known-gaps--open-items).
 
 ## Architecture
 
 ```mermaid
 flowchart TD
-    A[Caller] --> B[Telephony Provider]
-    B --> C[FastAPI Voice Gateway]
-    C --> D[Call Session Manager - Redis]
-    D --> E[Groq Whisper - STT, hosted]
-    E --> F[Conversation Manager - State Machine]
-    F --> G[Gemini LLM, hosted]
-    G --> H[Intent/Entity Extraction]
-    H --> I[Business Logic Layer]
-    I --> J[Booking Engine]
-    J --> K[(PostgreSQL)]
-    I --> L[Response Generator]
-    L --> M[Deepgram Aura-1 TTS, hosted]
-    M --> B
-    I -.low confidence.-> N[Human Transfer]
+    A[Caller - PSTN] --> B[SignalWire]
+    B -->|SWML webhook| C[FastAPI: signalwire_webhook.py]
+    C -->|answer + connect stream| D[WS: signalwire_gateway.py]
+    B2[Browser mic - Dashboard test call] -->|raw PCM| D2[WS: voice_gateway.py]
+    D --> E[Deepgram Streaming STT]
+    D2 --> E
+    E --> F[Conversation Loop / State Machine]
+    F --> G[Gemini LLM - intent/entity extraction]
+    G --> H[Business Logic + Booking Engine]
+    H --> I[(PostgreSQL)]
+    F --> J[RAG FAQ Retriever]
+    H --> K[TTS Router: Deepgram Aura-1 / ElevenLabs]
+    D2 --> L[Redis session store - call: prefix, 1h TTL]
+    D --> L
 ```
 
-**Non-negotiable rule:** the LLM only ever sees a transcript + conversation context and returns structured JSON (intent, entities, confidence). It never queries or writes the database. The Business Logic Layer owns every rule, availability check, and write.
+Two independent WebSocket entry points both funnel into the same conversation engine:
+
+- **`/ws/signalwire/{call_sid}`** — driven by a real (or SignalWire-simulated) phone call, mu-law 8kHz audio
+- **`/ws/calls/{call_id}`** — driven by the dashboard's browser mic, linear16 PCM audio, used for the in-app "test call" flow and for QA without touching the phone network
 
 ## Folder Structure
 
 ```
-voice-receptionist-platform/
-├── backend/
-│   ├── app/
-│   │   ├── api/                  # REST routers (dashboard, admin, tenant config)
-│   │   ├── ws/                   # WebSocket handlers (voice gateway)
-│   │   ├── core/                 # config, security, logging, settings
-│   │   ├── session/              # Call Session Manager (Redis-backed)
-│   │   ├── conversation/         # Conversation Manager / state machine
-│   │   ├── stt/                  # Groq Whisper client wrapper
-│   │   ├── llm/                  # Gemini orchestrator, prompt templates, timeout/circuit breaker
-│   │   ├── nlu/                  # Intent/entity extraction + validation schemas
-│   │   ├── business/             # Business Logic Layer (per-tenant rules)
-│   │   ├── booking/              # Booking Engine (transactional, idempotent)
-│   │   ├── tts/                  # Deepgram Aura client wrapper & audio cache
-│   │   ├── models/               # SQLAlchemy models
-│   │   ├── schemas/              # Pydantic schemas
-│   │   ├── db/                   # session, migrations (Alembic)
-│   │   └── observability/        # logging, metrics, tracing
-│   ├── tests/
-│   │   ├── unit/
-│   │   ├── integration/
-│   │   └── conversation_flows/   # scripted conversation regression tests
-│   ├── alembic/
-│   ├── Dockerfile
-│   └── requirements.txt
+Talkse/                            (repo root, branch: merge)
+├── Talkse-backend/
+│   └── Talkse-backend/
+│       ├── app/
+│       │   ├── api/v1/
+│       │   │   ├── calls.py             # REST call lifecycle (start/turn/end/history)
+│       │   │   ├── appointments.py
+│       │   │   ├── tenants.py           # per-tenant config, plan, phone number, patients
+│       │   │   ├── clinic.py            # services / providers lookup
+│       │   │   ├── rag.py               # FAQ query endpoint
+│       │   │   └── signalwire_webhook.py
+│       │   ├── ws/
+│       │   │   ├── voice_gateway.py     # browser mic test-call path
+│       │   │   └── signalwire_gateway.py
+│       │   ├── core/
+│       │   │   ├── config.py            # pydantic-settings Settings
+│       │   │   └── security.py          # Clerk auth + tenant resolution
+│       │   ├── services/
+│       │   │   ├── ai_clients.py
+│       │   │   ├── conversation_loop.py
+│       │   │   ├── conversation_router.py
+│       │   │   ├── booking_engine.py
+│       │   │   ├── clinic_config.py
+│       │   │   ├── db.py
+│       │   │   ├── streaming_stt.py
+│       │   │   ├── telephony/audio_convert.py   # mu-law ⇄ PCM16 conversion
+│       │   │   ├── tts/                 # base.py, router.py, deepgram_tts.py, elevenlabs_tts.py
+│       │   │   └── rag/                 # ingest, chunk, clean, embeddings, retriever, scrape
+│       │   ├── session/store.py         # Redis-backed session store
+│       │   └── main.py
+│       ├── tests/
+│       ├── requirements.txt / pyproject.toml / uv.lock
+│       └── .env.example
 ├── frontend/
 │   ├── src/
-│   │   ├── pages/
-│   │   ├── components/
-│   │   ├── api/
-│   │   └── hooks/
-│   ├── Dockerfile
-│   └── package.json
-├── infra/
-│   ├── docker-compose.yml        # backend, frontend, postgres, redis, nginx (no local AI services)
-│   ├── nginx/
-│   └── deploy/                   # environment-specific configs
-├── Docs/
-│   ├── ARCHITECTURE_DECISIONS.md
-│   ├── KPI_PLAN (1) (1).md
-│   └── README (3).md
-└── .github/workflows/            # CI/CD pipelines
+│   │   ├── pages/        # DashboardPage, CallsPage, LiveCallView, AppointmentsPage, CalendarPage, SettingsPage, OverviewPage
+│   │   ├── components/   # CallControls, LiveTranscript, NluBookingPanel, WaveformCenterpiece, PatientCard, NavBar, ...
+│   │   ├── hooks/        # useLiveCall.js — owns the /ws/calls/{call_id} connection
+│   │   ├── api/          # calls.js, callActions.js, patients.js, client.js
+│   │   ├── auth/
+│   │   └── context/
+│   ├── package.json
+│   └── vite.config.js
+└── docs/
+    └── fix_plan.md        # sprint-by-sprint plan closing out a prior frontend/backend contract audit
 ```
 
-## Voice AI Pipeline
+## Two Ways a Call Reaches the AI
 
-```mermaid
-sequenceDiagram
-    participant Caller
-    participant GW as Voice Gateway
-    participant STT as Groq Whisper (hosted)
-    participant CM as Conversation Manager
-    participant LLM as Gemini (hosted)
-    participant BL as Business Logic
-    participant DB as PostgreSQL
-    participant TTS as Deepgram Aura-1 (hosted)
+**1. Real (or SignalWire-simulated) phone call**
+`SignalWire → POST /api/v1/signalwire/voice → SWML response instructing SignalWire to open a bidirectional media stream → WS /ws/signalwire/{call_sid}`. Audio arrives as base64 mu-law @ 8kHz; converted to PCM16 for STT and back to mu-law for TTS playback (`app/services/telephony/audio_convert.py`).
 
-    Caller->>GW: Audio stream
-    GW->>STT: Chunked audio
-    STT-->>CM: Transcript (partial/final)
-    CM->>LLM: Transcript + state + tenant context
-    LLM-->>CM: {intent, entities, confidence}
-    CM->>BL: Validated request
-    BL->>DB: Availability / write
-    DB-->>BL: Result
-    BL-->>CM: Next state + response text
-    CM->>TTS: Response text
-    TTS-->>GW: Synthesized audio
-    GW-->>Caller: Audio stream
-```
-
-## Development Roadmap
-
-- **Phase 1:** Core pipeline on managed APIs (STT → LLM → NLU → Business Logic → Booking → TTS), single-tenant, real latency baseline measurement against managed-provider targets
-- **Phase 2:** Multi-tenant data model, tenant-scoped prompts/config, dashboard MVP
-- **Phase 3:** Observability stack, circuit breakers, rate limiting, CI/CD
-- **Phase 4:** Load testing, horizontal scaling, human handoff refinement
-- **Phase 5:** Production rollout to pilot clinics, then general availability
+**2. Dashboard test call (browser mic)**
+`POST /api/v1/calls/ → {call_id} → WS /ws/calls/{call_id}`. The frontend's `useLiveCall.js` opens this socket and streams raw mic audio; the server emits typed `{type, data}` events (`transcript.final`, `state.changed`, `audio.chunk`, `call.ended`, …) that the dashboard renders live. This path never touches SignalWire and costs nothing beyond your AI providers' usage — see [Testing Without Placing a Real Phone Call](#testing-without-placing-a-real-phone-call).
 
 ## Installation
 
 ### Prerequisites
 
-- Docker & Docker Compose
-- Python 3.11+
+- Python 3.11+ (backend uses `uv` or `pip`)
 - Node.js 18+
-- No GPU/CPU model hosting required — all AI components are managed APIs; you need API keys for Gemini, Groq, Deepgram, and Telnyx before running the full pipeline (see [Managed AI Providers Setup](#managed-ai-providers-setup))
+- A reachable PostgreSQL instance (`DATABASE_URL`)
+- Redis is optional for local dev — the session store falls back to in-memory `fakeredis` automatically if it can't connect
+- API keys for Groq, Gemini, Deepgram, and Clerk are required to boot; ElevenLabs and SignalWire keys are optional unless you're testing paid-plan TTS or real telephony (see below)
 
 ```bash
-git clone https://github.com/your-org/voice-receptionist-platform.git
-cd voice-receptionist-platform
-cp .env.example .env
-docker compose -f infra/docker-compose.yml up --build
-```
-
-## Docker Setup
-
-`infra/docker-compose.yml` defines: `backend`, `frontend`, `postgres`, `redis`, `nginx`. No local AI service containers (no Ollama, no self-hosted STT/TTS) — Gemini, Groq, and Deepgram are called over the network via their respective API keys in `.env`. Each service has its own healthcheck; `backend` waits on `postgres` and `redis` healthchecks before starting.
-
-```bash
-docker compose -f infra/docker-compose.yml up -d
-docker compose -f infra/docker-compose.yml logs -f backend
+git clone https://github.com/sheix-khizar/Talkse.git
+cd Talkse
+git checkout merge
+cp Talkse-backend/Talkse-backend/.env.example Talkse-backend/Talkse-backend/.env
+cp frontend/.env.example frontend/.env
 ```
 
 ## Environment Variables
 
+**Backend** (`Talkse-backend/Talkse-backend/.env`):
+
 ```bash
-# Database
-DATABASE_URL=postgresql+asyncpg://user:pass@postgres:5432/voice_platform
-
-# Redis
-REDIS_URL=redis://redis:6379/0
-
-# Gemini (LLM)
-GEMINI_API_KEY=change-me-in-vault
-GEMINI_MODEL=gemini-flash-lite-latest
-
-# Groq (STT)
-GROQ_API_KEY=change-me-in-vault
-GROQ_WHISPER_MODEL=whisper-large-v3-turbo
-
-# Deepgram (TTS)
-DEEPGRAM_API_KEY=change-me-in-vault
-DEEPGRAM_VOICE=aura-asteria-en
-
-# Telnyx (Telephony)
-TELNYX_API_KEY=change-me-in-vault
-TELNYX_PUBLIC_KEY=change-me-in-vault
-TELNYX_PHONE_NUMBER=+1XXXXXXXXXX
-
-# Auth
-JWT_SECRET=change-me-in-vault
-JWT_EXPIRY_MINUTES=60
-
-# App
-ENVIRONMENT=development
-LOG_LEVEL=INFO
+GROQ_API_KEY=your_groq_api_key_here
+GEMINI_API_KEY=your_gemini_api_key_here
+DEEPGRAM_API_KEY=your_deepgram_api_key_here
+DATABASE_URL=postgresql://user:password@localhost:5432/dbname
 LLM_TIMEOUT_SECONDS=4.0
+
+# ElevenLabs — only required if a tenant is on the "paid" plan
+ELEVENLABS_API_KEY=
+ELEVENLABS_VOICE_ID=
+ELEVENLABS_MODEL_ID=eleven_turbo_v2_5
+
+CLERK_SECRET_KEY=sk_test_your_key_here
+CLERK_AUTHORIZED_PARTY=http://localhost:5173
+
+# Only required for real inbound telephony via SignalWire — not needed
+# for the browser test-call path
+SIGNALWIRE_SPACE=
+SIGNALWIRE_PROJECT=
+SIGNALWIRE_TOKEN=
+SIGNALWIRE_SIGNING_KEY=
+PUBLIC_HOST=            # your public hostname, e.g. from ngrok, used to build the wss:// stream URL SignalWire connects back to
+
+REDIS_URL=redis://localhost:6379/0    # optional, see above
 ```
 
-> In production, secrets come from a vault/secret manager — never committed `.env` files.
-
-## PostgreSQL Setup
+**Frontend** (`frontend/.env`):
 
 ```bash
-docker exec -it voice-platform-postgres psql -U user -d voice_platform
-alembic upgrade head
+VITE_CLERK_PUBLISHABLE_KEY=pk_test_your_key_here
+VITE_WS_URL=   # optional; defaults to same-origin ws(s):// if unset
 ```
 
-Row-level security is enabled per tenant table; every query must run with the tenant context set (`SET app.current_tenant = '<tenant_id>'`) via a session middleware.
+## Managed AI & Telephony Providers Setup
 
-## Redis Setup
+All AI components are hosted APIs — no local model hosting required.
 
-Redis stores ephemeral state only: active call sessions, conversation turn history, and rate-limit counters. Nothing durable lives in Redis — PostgreSQL is the source of truth for anything that must survive a restart.
-
-```bash
-docker exec -it voice-platform-redis redis-cli PING
-```
-
-## Managed AI Providers Setup
-
-No local model downloads or GPU/CPU provisioning required — all three AI components are hosted APIs. Sign up for each provider and add the resulting keys to `.env` (never `.env.example`):
-
-- **Gemini (LLM):** [Google AI Studio](https://aistudio.google.com) — free tier available, no card required. Use the `gemini-flash-lite-latest` alias so the config auto-tracks Google's current model without manual updates as older versions get deprecated.
-- **Groq (STT):** [console.groq.com](https://console.groq.com) — free tier available, no card required (2,000 requests/day).
-- **Deepgram (TTS):** [deepgram.com](https://deepgram.com) — $200 signup credit, no recurring free tier after that.
-- **Telnyx (Telephony):** [telnyx.com](https://telnyx.com) — free trial credit, no card required to start. Consider applying to Telnyx's AI Accelerator program for additional startup credit.
-
-The LLM Orchestrator wraps all Gemini calls with a timeout (`LLM_TIMEOUT_SECONDS`, default 4s for hosted API) and circuit breaker; on failure it returns a fallback canned response, never hanging the call.
-
-Pre-synthesize and cache common TTS phrases (greetings, confirmations) per tenant to cut both latency and character-based Deepgram cost.
-
-**Free tiers are for development only, not a production cost plan.** They are rate-limited (~15-30 requests/minute) and, for Deepgram, a one-time credit rather than a recurring allowance. See `Docs/ARCHITECTURE_DECISIONS.md` for production cost modeling and the volume threshold for revisiting self-hosting.
+- **Groq:** [console.groq.com](https://console.groq.com) — free tier, no card required. Used for the browser-path batch STT fallback.
+- **Gemini:** [Google AI Studio](https://aistudio.google.com) — free tier, no card required. Powers intent/entity extraction.
+- **Deepgram:** [deepgram.com](https://deepgram.com) — signup credit, used for streaming STT and default TTS.
+- **ElevenLabs:** only needed for tenants on the "paid" TTS plan; the TTS router falls back to Deepgram automatically if it's unset or fails.
+- **Clerk:** [clerk.com](https://clerk.com) — dashboard auth. If unreachable or the token is missing/invalid, `get_current_user()` falls back to a `dev_user` / tenant `042` identity so local development isn't blocked.
+- **SignalWire:** [signalwire.com](https://signalwire.com) — only needed to receive real inbound PSTN calls. Free trial credit is available and trial accounts let you verify and call numbers you own without a card. **You do not need this to test the AI pipeline itself** — see below.
 
 ## Backend Setup
 
 ```bash
-cd backend
+cd Talkse-backend/Talkse-backend
 python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-alembic upgrade head
 uvicorn app.main:app --reload --port 8000
 ```
+
+On startup (`app/main.py` lifespan), the app initializes/migrates its own Postgres tables (tenants, RAG, TTS usage, call logs) and enables row-level security — no separate Alembic step is required in this branch.
 
 ## Frontend Setup
 
@@ -289,113 +233,84 @@ npm run dev
 ## API Structure
 
 ```
+GET    /health
+
+POST   /api/v1/calls/                          # start a call session (browser test-call path)
+POST   /api/v1/calls/{call_id}/turn             # typed-text turn (no audio)
+POST   /api/v1/calls/{call_id}/turn/audio        # browser-recorded audio blob turn
+POST   /api/v1/calls/{call_id}/end
+GET    /api/v1/calls/                            # active calls for the current tenant
+GET    /api/v1/calls/history
+GET    /api/v1/calls/{call_id}
+
+GET    /api/v1/appointments/
+
+GET    /api/v1/tenants/{tenant_id}/tts-usage
+GET    /api/v1/tenants/{tenant_id}/stats
+GET    /api/v1/tenants/{tenant_id}/config
+PUT    /api/v1/tenants/{tenant_id}/plan
+PUT    /api/v1/tenants/{tenant_id}/phone-number
+GET    /api/v1/tenants/{tenant_id}/patients
 POST   /api/v1/tenants/{tenant_id}/appointments
-GET    /api/v1/tenants/{tenant_id}/appointments/{id}
-PATCH  /api/v1/tenants/{tenant_id}/appointments/{id}
-DELETE /api/v1/tenants/{tenant_id}/appointments/{id}
-GET    /api/v1/tenants/{tenant_id}/calls
-GET    /api/v1/tenants/{tenant_id}/calls/{call_id}/transcript
-GET    /api/v1/tenants/{tenant_id}/escalations
-POST   /api/v1/auth/login
-```
 
-Example booking request:
+GET    /api/v1/clinic/services
+GET    /api/v1/clinic/providers
 
-```json
-POST /api/v1/tenants/clinic_042/appointments
-{
-  "caller_phone": "+15551234567",
-  "service_id": "svc_botox_touchup",
-  "provider_id": "prov_dr_smith",
-  "requested_time": "2026-07-25T15:30:00-05:00",
-  "idempotency_key": "call_88f2e1-book-1"
-}
-```
+POST   /api/v1/rag/query
 
-Example response:
+POST   /api/v1/signalwire/voice                  # SignalWire webhook, returns SWML
 
-```json
-{
-  "appointment_id": "appt_9a31c",
-  "status": "confirmed",
-  "scheduled_time": "2026-07-25T15:30:00-05:00",
-  "provider": "Dr. Smith",
-  "service": "Botox Touch-Up"
-}
+WS     /ws/calls/{call_id}                       # browser mic test-call
+WS     /ws/signalwire/{call_sid}                 # real telephony media stream
 ```
 
 ## WebSocket Events
 
+Events on `/ws/calls/{call_id}` (browser path), sent as `{"type": ..., "data": ...}`:
+
 | Event | Direction | Payload |
 |---|---|---|
-| `call.started` | Gateway → Client | `{call_id, tenant_id, caller_number}` |
-| `audio.chunk` | Client ↔ Gateway | binary audio frame |
-| `transcript.partial` | Gateway → Client (internal) | `{call_id, text}` |
-| `transcript.final` | Gateway → Client (internal) | `{call_id, text}` |
-| `state.changed` | Internal | `{call_id, from_state, to_state}` |
-| `call.transferred` | Gateway → Telephony | `{call_id, reason, target}` |
-| `call.ended` | Gateway → Client | `{call_id, outcome}` |
+| `call.started` | Server → Client | `{callId, callerPhone, plan}` |
+| `transcript.final` | Server → Client | `{role, text}` |
+| `state.changed` | Server → Client | `{status, isAiSpeaking, nlu?}` |
+| `audio.chunk` | Server → Client | `{audio_base64}` |
+| `call.ended` | Server → Client | `{callId, outcome}` |
 
-## Folder Naming & Coding Standards
+`/ws/signalwire/{call_sid}` speaks SignalWire's own Media Streams protocol directly (`start` / `media` / `stop` events with base64 mu-law payloads), not this typed shape.
 
-- `snake_case` for Python modules/files, `PascalCase` for classes, `camelCase` for React components/files.
-- One responsibility per module — e.g., `booking/engine.py` never imports `llm/` directly; it only receives validated data from `business/`.
-- All Pydantic schemas for LLM output live in `nlu/schemas.py` — the LLM's JSON is validated against these before anything downstream trusts it.
-- Type hints required on all backend function signatures.
+## Testing Without Placing a Real Phone Call
 
-## Branch Strategy & Git Workflow
+You don't need a SignalWire number, a US carrier, or any real telephony to test the AI pipeline end to end:
 
-- `main` — production-ready, protected, deploy-on-merge to prod
-- `develop` — integration branch, deploy-on-merge to staging
-- `feature/<ticket-id>-short-desc` — feature branches off `develop`
-- `hotfix/<ticket-id>` — off `main`, merged back to both `main` and `develop`
+1. Start the backend and frontend as above.
+2. In the dashboard, start a call — this hits `POST /api/v1/calls/` and opens `ws://.../ws/calls/{call_id}`.
+3. Speak into your mic. Audio streams to Deepgram STT → the conversation engine → Gemini → the TTS router, and the AI's spoken reply streams back and plays in-browser.
 
-All PRs require: passing CI (lint, unit tests, conversation-flow regression tests), one reviewer approval, and no direct commits to `main`/`develop`.
+This costs only your AI providers' usage (all have no-card free tiers). To validate the SignalWire webhook layer specifically without dialing internationally, run `pytest tests/test_signalwire.py` (posts a fake `CallSid` and checks the returned SWML) — or, if you want to test a real inbound leg, use SignalWire's browser-based test dialer or a free SIP softphone registered to your SignalWire project so the call routes over IP instead of your local carrier.
 
 ## Testing
 
-- **Unit tests** — business logic, booking engine, NLU schema validation
-- **Integration tests** — API + DB + Redis, using test containers
-- **Conversation-flow regression tests** — scripted multi-turn transcripts run against the Conversation Manager + LLM to catch prompt/model-swap regressions before deploy
-- **Load tests** — concurrent call simulation to validate latency SLAs under load
-
 ```bash
-pytest backend/tests/unit
-pytest backend/tests/integration
-pytest backend/tests/conversation_flows
+cd Talkse-backend/Talkse-backend
+pytest                          # full suite
+pytest tests/test_conversation.py
+pytest tests/test_signalwire.py
+pytest tests/test_tts_router.py tests/test_tts_providers.py
+pytest tests/test_sprint1_contract.py tests/test_sprint2_tts.py
+pytest tests/test_call_plan_resolution.py
 ```
 
-## Deployment
+## Known Gaps / Open Items
 
-- Staged environments: `dev → staging → production`
-- CI/CD via GitHub Actions: lint → test → build image → push → deploy
-- Blue/green or canary deploy for the Voice Gateway to avoid dropping active calls
-- Database migrations run as a pre-deploy step, backward-compatible for at least one release
-
-## Monitoring
-
-- Structured JSON logs with `call_id`/`tenant_id` correlation, shipped to a log aggregator
-- Prometheus metrics: latency per pipeline stage, STT/LLM/TTS error rates, active call count, escalation rate
-- Grafana dashboards per tenant and platform-wide
-- Alerting on: latency SLA breach, error rate spike, Gemini/Groq/Deepgram API failure or rate-limit (429) errors
-
-## Troubleshooting
-
-| Symptom | Likely Cause | Fix |
-|---|---|---|
-| Long silence mid-call | LLM or STT timeout without fallback | Check circuit breaker logs; verify Gemini/Groq API status and rate-limit headers |
-| Double-booked slot | Missing row lock / idempotency key | Check Booking Engine transaction logs |
-| Cross-tenant data appearing | Missing tenant_id filter or RLS misconfig | Verify `SET app.current_tenant` middleware is active |
-| High latency | Network latency to a provider, or hitting a free-tier rate limit | Check provider status pages; confirm you're on a paid/Developer tier if traffic exceeds free-tier RPM limits |
+- No Dockerfile/`docker-compose.yml` exists in this branch yet — local setup is native (venv + npm), not containerized.
+- `GET /api/v1/calls/` (active calls) does a Redis `KEYS`-style scan (`list_active_sessions`); noted in-code as a stopgap, not safe at production scale.
+- Call duration isn't tracked from a real start timestamp yet (`started_at` is passed as `None` when logging calls).
+- See `docs/fix_plan.md` for a fuller sprint-by-sprint account of frontend/backend contract issues that were found and fixed on this branch — worth a read before assuming any given endpoint is wired all the way through.
 
 ## Contribution Guide
 
-1. Fork/branch from `develop`.
+1. Branch from `develop` (or the current integration branch).
 2. Write/update tests for any behavior change, especially conversation flows.
-3. Run `pytest` and lint locally before opening a PR.
+3. Run `pytest` locally before opening a PR.
 4. Describe the tenant/business-rule impact of your change in the PR description.
 5. Get one review approval; CI must pass.
-
-## Future Roadmap
-
-Multi-language support, SMS/email confirmations, outbound reminder calls, calendar integrations, sentiment-based QA scoring, self-serve clinic onboarding.

@@ -38,9 +38,16 @@ app.add_middleware(
     allow_credentials=True,
 )
 
+from fastapi import Request
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+@app.post("/")
+@app.get("/")
+async def root_voice(request: Request):
+    return await signalwire_webhook.voice(request)
 
 app.include_router(calls.router)
 app.include_router(appointments.router)

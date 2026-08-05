@@ -47,9 +47,10 @@ class StreamingTranscriber:
     capture callback never performs blocking network I/O."""
 
     def __init__(self, sample_rate: int = 16000):
-        api_key = os.getenv("DEEPGRAM_API_KEY")
+        from app.core.config import settings
+        api_key = settings.deepgram_api_key or os.getenv("DEEPGRAM_API_KEY")
         if not api_key:
-            raise ValueError("DEEPGRAM_API_KEY missing in environment variables.")
+            raise ValueError("DEEPGRAM_API_KEY missing in settings or environment variables.")
 
         self.sample_rate = sample_rate
         self.client = DeepgramClient(api_key=api_key)

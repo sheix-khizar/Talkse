@@ -23,7 +23,9 @@ class DeepgramTTS:
 
         audio_stream = self._client.speak.v1.audio.generate(
             text=text,
-            model="aura-asteria-en"
+            model="aura-asteria-en",
+            encoding="linear16",
+            container="wav",
         )
 
         buffer = io.BytesIO()

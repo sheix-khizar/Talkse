@@ -19,17 +19,28 @@ logger = logging.getLogger("talkse")
 SW_SAMPLE_RATE = 8000  # SignalWire's <Stream> default: mulaw @ 8kHz
 
 
-async def _send_audio(websocket: WebSocket, stream_id: str, text: str, plan: str):
-    """Synthesizes text and streams it back to SignalWire as mulaw frames."""
+CHUNK_SIZE = 640  # 640 bytes = 80ms of 8kHz mu-law audio
+
+
+async def _send_audio(websocket: WebSocket, stream_id: str | None, text: str, plan: str):
+    """Synthesizes text and streams it back to SignalWire as paced mulaw frames."""
     try:
         audio_bytes, _, provider = await asyncio.to_thread(synthesize_for_plan_bytes, plan, text)
         pcm, native_rate = await asyncio.to_thread(extract_pcm_from_wav_bytes, audio_bytes)
         mulaw = pcm16_to_mulaw(pcm, native_rate)
-        await websocket.send_json({
-            "event": "media",
-            "stream_id": stream_id,
-            "media": {"payload": base64.b64encode(mulaw).decode("ascii")},
-        })
+
+        for i in range(0, len(mulaw), CHUNK_SIZE):
+            chunk = mulaw[i : i + CHUNK_SIZE]
+            payload_b64 = base64.b64encode(chunk).decode("ascii")
+            msg = {
+                "event": "media",
+                "media": {"payload": payload_b64},
+            }
+            if stream_id:
+                msg["stream_id"] = stream_id
+                msg["streamSid"] = stream_id
+            await websocket.send_json(msg)
+            await asyncio.sleep(0.04)
     except Exception as e:
         logger.error(f"[SignalWire TTS] Failed to synthesize/send audio: {e}")
 
@@ -39,8 +50,16 @@ async def signalwire_ws(websocket: WebSocket, call_sid: str):
     await websocket.accept()
     state = get_session(call_sid)
     if not state:
-        await websocket.close(code=4404)
-        return
+        state = {
+            "intent": None, "service": None, "preferred_time": None,
+            "caller_name": None, "existing_appointment_ref": None,
+            "turn_count": 0, "status": "collecting",
+            "idempotency_key": call_sid, "booking_result": None,
+            "tenant_id": db.DEFAULT_TENANT_ID,
+            "plan": "free",
+            "initial_prompt_emitted": False,
+        }
+        save_session(call_sid, state)
 
     stream_id = None
     transcriber = None
@@ -59,16 +78,21 @@ async def signalwire_ws(websocket: WebSocket, call_sid: str):
             msg = json.loads(raw)
             event = msg.get("event")
 
-            if event == "start":
-                stream_id = msg.get("stream_id") or msg.get("streamSid")
-                if not state.get("initial_prompt_emitted"):
-                    state["initial_prompt_emitted"] = True
-                    save_session(call_sid, state)
-                    opening = prompt_for_field(next_missing_field(state) or "intent")
-                    state.setdefault("transcript", []).append({"role": "ai", "text": opening})
-                    await _send_audio(websocket, stream_id, opening, state.get("plan", "free"))
+            if event == "start" or isinstance(msg.get("start"), dict):
+                start_obj = msg.get("start", {}) if isinstance(msg.get("start"), dict) else {}
+                stream_id = start_obj.get("streamSid") or start_obj.get("stream_id") or msg.get("streamSid") or msg.get("stream_id")
 
-            elif event == "media":
+            if not stream_id:
+                stream_id = msg.get("streamSid") or msg.get("stream_id")
+
+            if not state.get("initial_prompt_emitted"):
+                state["initial_prompt_emitted"] = True
+                save_session(call_sid, state)
+                opening = prompt_for_field(next_missing_field(state) or "intent")
+                state.setdefault("transcript", []).append({"role": "ai", "text": opening})
+                asyncio.create_task(_send_audio(websocket, stream_id, opening, state.get("plan", "free")))
+
+            if event == "media":
                 if not transcriber:
                     continue
                 media_payload = msg.get("media", {}).get("payload")
@@ -93,10 +117,10 @@ async def signalwire_ws(websocket: WebSocket, call_sid: str):
                             pass
                         for sentence in stream_gen:
                             if sentence:
-                                await _send_audio(websocket, stream_id, sentence, state.get("plan", "free"))
+                                asyncio.create_task(_send_audio(websocket, stream_id, sentence, state.get("plan", "free")))
                     elif result.get("reply_text"):
                         state.setdefault("transcript", []).append({"role": "ai", "text": result["reply_text"]})
-                        await _send_audio(websocket, stream_id, result["reply_text"], state.get("plan", "free"))
+                        asyncio.create_task(_send_audio(websocket, stream_id, result["reply_text"], state.get("plan", "free")))
 
                     if result.get("terminal"):
                         break
