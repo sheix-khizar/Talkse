@@ -99,11 +99,11 @@ input, textarea, select {
   background: #94a3b8;
 }
 
-/* Global Full-Width Container */
+/* Global Centered Container */
 .page-container {
-  width: 100%;
-  max-width: 100%;
-  padding: 2rem 2.5rem;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
   box-sizing: border-box;
 }
 
