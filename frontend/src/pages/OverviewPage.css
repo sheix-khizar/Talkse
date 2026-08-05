@@ -1,0 +1,311 @@
+/* ── 3D Operations Overview Stylesheet ── */
+
+.overview-3d-wrapper {
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 2rem 2.5rem;
+  animation: page-fade-slide 0.4s ease-out;
+  perspective: 1200px;
+}
+
+/* ── Page Header ── */
+.page-header-3d {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2rem;
+}
+
+.header-title-group {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.header-icon-glow {
+  width: 54px;
+  height: 54px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #0f766e 0%, #0d9488 50%, #0891b2 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  box-shadow: 0 10px 25px -5px rgba(15, 118, 110, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  transform: rotate(-3deg) translateZ(10px);
+  transition: transform 0.3s ease;
+}
+
+.header-icon-glow:hover {
+  transform: rotate(0deg) scale(1.05) translateZ(15px);
+}
+
+.page-title-3d {
+  font-size: 1.75rem;
+  font-weight: 750;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+  background: linear-gradient(135deg, #0f172a 0%, #0f766e 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.page-subtitle-3d {
+  font-size: 0.875rem;
+  color: #64748b;
+  margin-top: 0.2rem;
+}
+
+.header-actions-3d {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.live-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 1rem;
+  font-size: 0.8rem;
+  font-weight: 650;
+  color: #059669;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  border-radius: 20px;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.12);
+}
+
+.dot-pulse-green {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #10b981;
+  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  animation: pulse-ring 1.8s infinite;
+}
+
+.refresh-btn-3d {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem 1.25rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #0f766e;
+  background: #ffffff;
+  border: 1px solid #ccfbf1;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(15, 118, 110, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+  transition: all 0.25s ease;
+}
+
+.refresh-btn-3d:hover {
+  background: #0f766e;
+  color: #ffffff;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(15, 118, 110, 0.3);
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+/* ── 3D Stats Hero Grid ── */
+.stats-grid-3d {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.25rem;
+  margin-bottom: 2rem;
+}
+
+.stat-card-3d {
+  position: relative;
+  border-radius: 20px;
+  padding: 1.35rem 1.5rem;
+  background: #ffffff;
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 4px 10px -2px rgba(0, 0, 0, 0.02);
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  overflow: hidden;
+}
+
+.stat-card-3d:hover {
+  transform: translateY(-6px) scale(1.02);
+  box-shadow: 0 20px 35px -10px rgba(15, 118, 110, 0.18), 0 8px 15px rgba(0, 0, 0, 0.04);
+}
+
+.stat-card-inner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  position: relative;
+  z-index: 2;
+}
+
+.stat-label {
+  font-size: 0.78rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+}
+
+.stat-value {
+  font-size: 2.3rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0.3rem 0;
+}
+
+.stat-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.2rem 0.6rem;
+  border-radius: 20px;
+}
+
+.green-glow {
+  background: #ecfdf5;
+  color: #059669;
+  border: 1px solid #a7f3d0;
+}
+
+.rose-glow {
+  background: #fff1f2;
+  color: #e11d48;
+  border: 1px solid #fecdd3;
+}
+
+.indigo-glow {
+  background: #eef2ff;
+  color: #4f46e5;
+  border: 1px solid #c7d2fe;
+}
+
+.stat-icon-wrapper {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
+}
+
+.teal-bg {
+  background: linear-gradient(135deg, #0f766e 0%, #0d9488 100%);
+  box-shadow: 0 8px 16px rgba(15, 118, 110, 0.25);
+}
+
+.green-bg {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  box-shadow: 0 8px 16px rgba(16, 185, 129, 0.25);
+}
+
+.rose-bg {
+  background: linear-gradient(135deg, #f43f5e 0%, #e11d48 100%);
+  box-shadow: 0 8px 16px rgba(244, 63, 94, 0.25);
+}
+
+.indigo-bg {
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+  box-shadow: 0 8px 16px rgba(99, 102, 241, 0.25);
+}
+
+.stat-card-bottom {
+  margin-top: 1rem;
+  padding-top: 0.6rem;
+  border-top: 1px dashed #e2e8f0;
+}
+
+.sub-metric {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #94a3b8;
+}
+
+.stat-card-3d::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #0f766e 0%, #0891b2 100%);
+  border-radius: 0 0 20px 20px;
+}
+
+/* ── 3D Live Activity Card ── */
+.live-activity-card-3d {
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  border-radius: 22px;
+  border: 1px solid rgba(15, 118, 110, 0.2);
+  box-shadow: 
+    0 20px 45px -12px rgba(15, 118, 110, 0.18),
+    0 8px 20px -5px rgba(0, 0, 0, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  padding: 1.75rem;
+  transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), box-shadow 0.3s ease;
+  transform-style: preserve-3d;
+}
+
+.activity-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 1.25rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 1.5px dashed #cbd5e1;
+}
+
+.activity-title-flex {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.activity-icon-chip {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: #e0f2f1;
+  color: #0f766e;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #99f6e4;
+}
+
+.activity-card-title {
+  font-size: 1.25rem;
+  font-weight: 750;
+  color: #0f172a;
+}
+
+.activity-card-subtitle {
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.pulse-live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.78rem;
+  font-weight: 650;
+  color: #059669;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  border-radius: 20px;
+}
+
+.queue-strip-wrapper-3d {
+  width: 100%;
+}
