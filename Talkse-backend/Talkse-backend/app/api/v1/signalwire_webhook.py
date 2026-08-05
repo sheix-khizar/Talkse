@@ -59,13 +59,16 @@ async def voice(request: Request):
 
     tenant_id = db.get_tenant_by_phone(to_number) or db.DEFAULT_TENANT_ID
 
+    from app.services import clinic_config as config
+    resolved_plan = config.get_plan_for_tenant(tenant_id)
+
     state = {
         "intent": None, "service": None, "preferred_time": None,
         "caller_name": None, "existing_appointment_ref": None,
         "turn_count": 0, "status": "collecting",
         "idempotency_key": call_sid, "booking_result": None,
         "tenant_id": tenant_id,
-        "plan": "free",  # force Deepgram chain over telephony
+        "plan": resolved_plan,
         "caller_phone": from_number,
         "initial_prompt_emitted": False,
     }

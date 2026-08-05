@@ -12,6 +12,7 @@ import ErrorBoundary from '../components/ErrorBoundary';
 import { useLiveCall } from '../hooks/useLiveCall';
 import { useTenant } from '../context/TenantContext';
 import { getActiveCalls } from '../api/calls';
+import { fetchTenantConfig, updateTenantPlan } from '../api/tenants';
 import { useAuth } from '@clerk/clerk-react';
 import './LiveCallView.css';
 
@@ -21,9 +22,20 @@ export default function LiveCallView() {
   const [activeCallId, setActiveCallId] = useState(null);
   const [activeCalls, setActiveCalls] = useState([]);
   const [loadError, setLoadError] = useState(null);
+  const [currentPlan, setCurrentPlan] = useState('free');
 
   useEffect(() => {
     let cancelled = false;
+
+    if (selectedTenant?.id) {
+      fetchTenantConfig(selectedTenant.id, getToken)
+        .then((cfg) => {
+          if (!cancelled && cfg?.clinic?.plan) {
+            setCurrentPlan(cfg.clinic.plan);
+          }
+        })
+        .catch((err) => console.warn('Could not fetch tenant plan:', err));
+    }
 
     const fetchActiveCalls = () => {
       getActiveCalls(getToken)
@@ -63,6 +75,17 @@ export default function LiveCallView() {
 
   const liveCall = useLiveCall(activeCallId, getToken);
   const confidenceScore = liveCall.nlu?.intent?.confidence || 100;
+
+  const activePipelinePlan = liveCall.activePlan || currentPlan;
+
+  const handlePlanSelect = async (plan) => {
+    setCurrentPlan(plan);
+    try {
+      await updateTenantPlan(selectedTenant.id, plan, getToken);
+    } catch (err) {
+      console.error('Failed to update tenant plan:', err);
+    }
+  };
 
   return (
     <ErrorBoundary>
@@ -112,11 +135,26 @@ export default function LiveCallView() {
             </div>
           )}
 
-          {liveCall.activePlan && (
-            <div className="connection-banner" style={{backgroundColor: '#e8f5e9', color: '#2e7d32'}}>
-              🎙️ Active pipeline: {liveCall.activePlan === 'paid' ? 'Premium (ElevenLabs)' : 'Standard (Deepgram)'}
+          {/* Interactive Voice Pipeline Selection Bar */}
+          <div className="pipeline-selector-banner">
+            <span className="pipeline-title">🎙️ Active Pipeline:</span>
+            <div className="pipeline-toggle-group">
+              <button
+                type="button"
+                className={`pipeline-toggle-btn ${activePipelinePlan === 'free' ? 'active' : ''}`}
+                onClick={() => handlePlanSelect('free')}
+              >
+                Standard (Deepgram)
+              </button>
+              <button
+                type="button"
+                className={`pipeline-toggle-btn ${activePipelinePlan === 'paid' ? 'active' : ''}`}
+                onClick={() => handlePlanSelect('paid')}
+              >
+                ⚡ Premium (ElevenLabs)
+              </button>
             </div>
-          )}
+          </div>
 
           {/* Active Call Status Bar */}
           <LiveCallBanner
