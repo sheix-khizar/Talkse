@@ -5,7 +5,6 @@ import {
   Bell, 
   Calendar, 
   LogOut, 
-  Building2, 
   LayoutDashboard, 
   PhoneCall, 
   Sliders, 
@@ -15,13 +14,11 @@ import {
   Sparkles,
   Bot
 } from 'lucide-react';
-import { useTenant } from '../context/TenantContext';
 import { useAuth, useUser } from '@clerk/clerk-react';
 import './NavBar.css';
 
 export default function NavBar() {
   const location = useLocation();
-  const { selectedTenant, setSelectedTenant, tenants } = useTenant();
   const { signOut } = useAuth();
   const { user } = useUser();
 
@@ -54,24 +51,7 @@ export default function NavBar() {
           </div>
         </Link>
 
-        {/* Tenant Selector Dropdown Pill */}
-        <div className="tenant-selector-3d">
-          <Building2 size={16} className="tenant-icon-3d" />
-          <select
-            className="tenant-select-3d"
-            value={selectedTenant.id}
-            onChange={(e) => {
-              const found = tenants.find((t) => t.id === e.target.value);
-              if (found) setSelectedTenant(found);
-            }}
-          >
-            {tenants.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name} (ID: {t.id})
-              </option>
-            ))}
-          </select>
-        </div>
+
 
         {/* Navigation Tabs Bar */}
         <nav className="navbar-tabs-3d">
