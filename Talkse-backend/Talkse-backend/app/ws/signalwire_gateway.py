@@ -12,6 +12,7 @@ from app.services.telephony.audio_convert import (
 )
 from app.session.store import get_session, save_session
 from app.services import db
+from app.ws.call_broadcaster import emit as broadcast_emit
 
 router = APIRouter()
 logger = logging.getLogger("talkse")
@@ -79,9 +80,16 @@ async def signalwire_ws(websocket: WebSocket, call_sid: str):
             "tenant_id": db.DEFAULT_TENANT_ID,
             "plan": "free",
             "voice_pipeline": "deepgram",
+            "channel": "signalwire",
             "initial_prompt_emitted": False,
         }
         save_session(call_sid, state)
+
+    await broadcast_emit(call_sid, "call.started", {
+        "callId": call_sid,
+        "callerPhone": state.get("caller_phone"),
+        "plan": state.get("plan", "free"),
+    })
 
     stream_id = None
     transcriber = None
@@ -112,8 +120,11 @@ async def signalwire_ws(websocket: WebSocket, call_sid: str):
                 save_session(call_sid, state)
                 opening = prompt_for_field(next_missing_field(state) or "intent")
                 state.setdefault("transcript", []).append({"role": "ai", "text": opening})
+                await broadcast_emit(call_sid, "transcript.final", {"role": "ai", "text": opening})
+                await broadcast_emit(call_sid, "state.changed", {"status": state.get("status"), "isAiSpeaking": True})
                 provider = _refresh_pipeline(call_sid, state)
                 asyncio.create_task(_send_audio(websocket, stream_id, opening, provider))
+                await broadcast_emit(call_sid, "state.changed", {"status": state.get("status"), "isAiSpeaking": False})
 
             if event == "media":
                 if not transcriber:
@@ -131,6 +142,7 @@ async def signalwire_ws(websocket: WebSocket, call_sid: str):
 
                 if transcript:
                     state.setdefault("transcript", []).append({"role": "customer", "text": transcript})
+                    await broadcast_emit(call_sid, "transcript.final", {"role": "customer", "text": transcript})
 
                     try:
                         result = await asyncio.wait_for(
@@ -151,6 +163,16 @@ async def signalwire_ws(websocket: WebSocket, call_sid: str):
 
                     save_session(call_sid, state)
 
+                    nlu_payload = {
+                        "intent": {"label": state.get("intent"), "confidence": 95},
+                        "service": state.get("service"),
+                        "time": state.get("preferred_time"),
+                        "callerName": state.get("caller_name"),
+                    }
+                    await broadcast_emit(call_sid, "state.changed", {
+                        "status": state.get("status"), "isAiSpeaking": True, "nlu": nlu_payload,
+                    })
+
                     if result.get("is_faq") and result.get("faq_stream"):
                         stream_gen = result["faq_stream"]
                         try:
@@ -160,13 +182,20 @@ async def signalwire_ws(websocket: WebSocket, call_sid: str):
                         provider = _refresh_pipeline(call_sid, state)
                         for sentence in stream_gen:
                             if sentence:
+                                await broadcast_emit(call_sid, "transcript.final", {"role": "ai", "text": sentence})
                                 asyncio.create_task(_send_audio(websocket, stream_id, sentence, provider))
                     elif result.get("reply_text"):
                         state.setdefault("transcript", []).append({"role": "ai", "text": result["reply_text"]})
+                        await broadcast_emit(call_sid, "transcript.final", {"role": "ai", "text": result["reply_text"]})
                         provider = _refresh_pipeline(call_sid, state)
                         asyncio.create_task(_send_audio(websocket, stream_id, result["reply_text"], provider))
 
+                    await broadcast_emit(call_sid, "state.changed", {
+                        "status": state.get("status"), "isAiSpeaking": False, "nlu": nlu_payload,
+                    })
+
                     if result.get("terminal"):
+                        await broadcast_emit(call_sid, "call.ended", {"callId": call_sid, "outcome": state.get("status")})
                         break
 
             elif event == "stop":
@@ -189,6 +218,7 @@ async def signalwire_ws(websocket: WebSocket, call_sid: str):
         if state and state.get("status") != "ended":
             state["status"] = "ended"
             save_session(call_sid, state)
+            await broadcast_emit(call_sid, "call.ended", {"callId": call_sid, "outcome": state.get("status")})
             tenant_id = state.get("tenant_id")
             if tenant_id:
                 try:

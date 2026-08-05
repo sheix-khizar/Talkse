@@ -81,6 +81,26 @@ async def voice_ws(websocket: WebSocket, call_id: str):
         "plan": state.get("plan", "free"),
     })
 
+    # Real telephony calls (SignalWire) are driven end-to-end by
+    # signalwire_gateway.py's own WebSocket to the carrier — this socket is
+    # the DASHBOARD's read-only view for that call, not a second
+    # conversation engine. Subscribe to the broadcast relay and just wait
+    # for the browser tab to disconnect; do NOT run the mic/STT loop below,
+    # which is only for browser-mic test calls created via POST /api/v1/calls.
+    if state.get("channel") == "signalwire":
+        from app.ws.call_broadcaster import subscribe, unsubscribe
+        await subscribe(call_id, websocket)
+        try:
+            while True:
+                msg = await websocket.receive()
+                if msg.get("type") == "websocket.disconnect":
+                    break
+        except WebSocketDisconnect:
+            pass
+        finally:
+            await unsubscribe(call_id, websocket)
+        return
+
     # The WebSocket is the single source of truth for the spoken greeting.
     if state.get("turn_count", 0) == 0 and state.get("status") == "collecting" and not state.get("initial_prompt_emitted"):
         state["initial_prompt_emitted"] = True

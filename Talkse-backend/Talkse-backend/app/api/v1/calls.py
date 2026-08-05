@@ -60,6 +60,7 @@ def start_call(tenant_id: str = "042", plan: str | None = None):
         "tenant_id": tenant_id,
         "plan": resolved_plan,
         "voice_pipeline": default_provider_for_plan(resolved_plan),
+        "channel": "browser_test",
         # NOTE: do NOT set initial_prompt_emitted=True here. The WebSocket
         # handler (voice_gateway.py) is the only place that actually
         # synthesizes and sends greeting AUDIO. reply_text below is

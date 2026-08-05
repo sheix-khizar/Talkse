@@ -68,6 +68,7 @@ async def voice(request: Request):
         "plan": "free",  # force Deepgram chain over telephony
         "voice_pipeline": "deepgram",
         "caller_phone": from_number,
+        "channel": "signalwire",
         "initial_prompt_emitted": False,
     }
     new_session(call_sid, state)
@@ -78,28 +79,18 @@ async def voice(request: Request):
     public_host = public_host.replace("https://", "").replace("http://", "").strip().rstrip("/")
     ws_url = f"wss://{public_host}/ws/signalwire/{call_sid}"
 
-    content_type = request.headers.get("content-type", "").lower()
-    accept = request.headers.get("accept", "").lower()
-
-    # If SWML JSON format requested by SignalWire Call Fabric Resource (Content-Type: application/json or Accept: application/json)
-    if "json" in content_type or "json" in accept:
-        swml = {
-            "version": "1.0.0",
-            "sections": {
-                "main": [
-                    {"answer": {}},
-                    {
-                        "stream": {
-                            "url": ws_url,
-                            "track": "both_tracks"
-                        }
-                    }
-                ]
-            },
-        }
-        return swml
-
-    # Default to LaML/cXML: a bidirectional <Connect><Stream>
+    # Always respond with LaML/cXML: a bidirectional <Connect><Stream>. This
+    # is the Twilio-compatible "event"/"streamSid"/"media" contract that
+    # signalwire_gateway.py implements. Do NOT branch on the request's
+    # Content-Type/Accept headers — SignalWire's webhook caller does not
+    # reliably send those in a way that correlates with what the *resource*
+    # itself expects, and the previous SWML-JSON branch used a bare,
+    # non-blocking "stream" step with nothing after it — SWML falls off the
+    # end of the script and SignalWire hangs up immediately (0:00
+    # duration) regardless of which branch executes. Also confirm this
+    # resource's SignalWire dashboard "Resource Type" is a cXML/LaML
+    # Webhook, not "SWML Webhook" — the latter will not execute this XML
+    # at all.
     xml_content = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Connect>
