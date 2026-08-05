@@ -77,9 +77,33 @@ async def voice(request: Request):
     public_host = public_host.replace("https://", "").replace("http://", "").strip().rstrip("/")
     ws_url = f"wss://{public_host}/ws/signalwire/{call_sid}"
 
-    # Always respond with LaML/cXML: a bidirectional <Connect><Stream>. This is
-    # the Twilio-compatible "event"/"streamSid"/"media" message contract that
-    # signalwire_gateway.py implements.
+    content_type = request.headers.get("content-type", "").lower()
+    accept = request.headers.get("accept", "").lower()
+
+    # If SWML JSON format requested by SignalWire Call Fabric Resource (Content-Type: application/json or Accept: application/json)
+    if "json" in content_type or "json" in accept:
+        swml = {
+            "version": "1.0.0",
+            "sections": {
+                "main": [
+                    {"answer": {}},
+                    {
+                        "connect": {
+                            "to": ws_url
+                        }
+                    },
+                    {
+                        "stream": {
+                            "url": ws_url,
+                            "track": "both_tracks"
+                        }
+                    }
+                ]
+            },
+        }
+        return swml
+
+    # Default to LaML/cXML: a bidirectional <Connect><Stream>
     xml_content = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Connect>

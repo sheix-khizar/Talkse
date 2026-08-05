@@ -40,6 +40,7 @@ def test_extract_pcm_from_wav_bytes():
 
 
 def test_signalwire_voice_webhook():
+    # Test LaML XML response for form-encoded request
     response = client.post(
         "/api/v1/signalwire/voice",
         data={
@@ -53,3 +54,19 @@ def test_signalwire_voice_webhook():
     assert "<Response>" in response.text
     assert "<Connect>" in response.text
     assert "<Stream url=" in response.text
+
+
+def test_signalwire_voice_webhook_json():
+    # Test SWML JSON response for JSON request
+    response = client.post(
+        "/api/v1/signalwire/voice",
+        json={
+            "call_id": "test_call_sid_456",
+            "from": "+15550001111",
+            "to": "+14155551234",
+        },
+    )
+    assert response.status_code == 200
+    json_data = response.json()
+    assert json_data.get("version") == "1.0.0"
+    assert "sections" in json_data
