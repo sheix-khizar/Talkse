@@ -1,0 +1,440 @@
+/* ── 3D Booking Calendar Stylesheet ── */
+
+.calendar-3d-wrapper {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+  animation: page-fade-slide 0.4s ease-out;
+  perspective: 1200px;
+}
+
+/* ── Page Header ── */
+.page-header-3d {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2rem;
+}
+
+.header-title-group {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.header-icon-glow {
+  width: 54px;
+  height: 54px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #0f766e 0%, #0d9488 50%, #0891b2 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  box-shadow: 0 10px 25px -5px rgba(15, 118, 110, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  transform: rotate(-3deg) translateZ(10px);
+  transition: transform 0.3s ease;
+}
+
+.header-icon-glow:hover {
+  transform: rotate(0deg) scale(1.05) translateZ(15px);
+}
+
+.page-title-3d {
+  font-size: 1.75rem;
+  font-weight: 750;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+  background: linear-gradient(135deg, #0f172a 0%, #0f766e 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.page-subtitle-3d {
+  font-size: 0.875rem;
+  color: #64748b;
+  margin-top: 0.2rem;
+}
+
+.refresh-btn-3d {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem 1.25rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #0f766e;
+  background: #ffffff;
+  border: 1px solid #ccfbf1;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(15, 118, 110, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+  transition: all 0.25s ease;
+}
+
+.refresh-btn-3d:hover {
+  background: #0f766e;
+  color: #ffffff;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(15, 118, 110, 0.3);
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+/* ── 3D Calendar Summary Bar ── */
+.calendar-summary-bar-3d {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.summary-item-3d {
+  background: #ffffff;
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  border-radius: 16px;
+  padding: 1rem 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 8px 20px -5px rgba(0, 0, 0, 0.04);
+  transition: transform 0.25s ease;
+}
+
+.summary-item-3d:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 25px -5px rgba(15, 118, 110, 0.12);
+}
+
+.summary-label {
+  font-size: 0.78rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.summary-val {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #0f766e;
+}
+
+/* ── 3D Controls Bar ── */
+.controls-bar-3d {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(12px);
+  padding: 1rem 1.25rem;
+  border-radius: 16px;
+  border: 1px solid rgba(207, 225, 227, 0.8);
+  box-shadow: 0 10px 25px -5px rgba(15, 118, 110, 0.08);
+  margin-bottom: 2rem;
+}
+
+.search-input-wrapper {
+  position: relative;
+  flex: 1;
+  min-width: 280px;
+}
+
+.search-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #0f766e;
+}
+
+.search-input-3d {
+  width: 100%;
+  padding: 0.7rem 2.5rem 0.7rem 2.6rem;
+  font-size: 0.875rem;
+  border-radius: 12px;
+  border: 1.5px solid #d1d5db;
+  background: #f8fafc;
+  color: #0f172a;
+  transition: all 0.25s ease;
+}
+
+.search-input-3d:focus {
+  background: #ffffff;
+  border-color: #0f766e;
+  box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.15), 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.clear-search-btn {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #94a3b8;
+}
+
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.select-wrapper-3d {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.filter-icon {
+  position: absolute;
+  left: 12px;
+  color: #0f766e;
+  pointer-events: none;
+}
+
+.select-3d {
+  padding: 0.65rem 2rem 0.65rem 2.3rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  border-radius: 12px;
+  border: 1.5px solid #d1d5db;
+  background: #f8fafc;
+  color: #0f172a;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.select-3d:focus, .select-3d:hover {
+  background: #ffffff;
+  border-color: #0f766e;
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.12);
+}
+
+/* ── 3D Calendar Grouped Container ── */
+.calendar-grouped-container-3d {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.calendar-day-card-3d {
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  border-radius: 22px;
+  border: 1px solid rgba(15, 118, 110, 0.2);
+  box-shadow: 
+    0 20px 45px -12px rgba(15, 118, 110, 0.16),
+    0 8px 20px -5px rgba(0, 0, 0, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  padding: 1.5rem;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.day-header-3d {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 1rem;
+  margin-bottom: 1.25rem;
+  border-bottom: 1.5px dashed #cbd5e1;
+}
+
+.day-title-flex {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.day-icon {
+  color: #0f766e;
+}
+
+.day-date-text {
+  font-size: 1.25rem;
+  font-weight: 750;
+  color: #0f172a;
+}
+
+.day-count-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 650;
+  border-radius: 20px;
+  background: #ecfdf5;
+  color: #059669;
+  border: 1px solid #a7f3d0;
+}
+
+/* ── Appointment Tiles Grid ── */
+.tiles-grid-3d {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  gap: 1.25rem;
+}
+
+.appointment-tile-3d {
+  background: #ffffff;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 18px;
+  padding: 1.25rem;
+  box-shadow: 0 8px 20px -5px rgba(0, 0, 0, 0.04);
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  position: relative;
+  overflow: hidden;
+}
+
+.appointment-tile-3d:hover {
+  transform: translateY(-6px) scale(1.02);
+  box-shadow: 0 16px 30px -8px rgba(15, 118, 110, 0.22);
+  border-color: #99f6e4;
+}
+
+.tile-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.time-chip-3d {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #0f766e 0%, #0d9488 100%);
+  color: #ffffff;
+  box-shadow: 0 4px 10px rgba(15, 118, 110, 0.25);
+}
+
+.status-dot-glow {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background-color: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+}
+
+.tile-patient-flex {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  margin-bottom: 1.25rem;
+}
+
+.tile-avatar-3d {
+  width: 44px;
+  height: 44px;
+  border-radius: 13px;
+  color: #ffffff;
+  font-weight: 750;
+  font-size: 0.95rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.tile-patient-name {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.tile-provider-text {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  color: #64748b;
+  margin-top: 0.15rem;
+}
+
+.tile-footer {
+  padding-top: 0.75rem;
+  border-top: 1px dashed #e2e8f0;
+}
+
+.tile-service-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.75rem;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: #e0f2f1;
+  color: #0f766e;
+  border: 1px solid #99f6e4;
+}
+
+/* ── 3D Empty State ── */
+.empty-state-3d {
+  padding: 4rem 2rem !important;
+  text-align: center;
+  background: #ffffff;
+  border-radius: 22px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.04);
+}
+
+.empty-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  max-width: 360px;
+  margin: 0 auto;
+}
+
+.empty-icon-3d {
+  width: 72px;
+  height: 72px;
+  border-radius: 22px;
+  background: linear-gradient(135deg, #e0f2f1 0%, #ccfbf1 100%);
+  color: #0f766e;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1.25rem;
+  box-shadow: 0 10px 25px rgba(15, 118, 110, 0.15);
+}
+
+.empty-content h4 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 0.4rem;
+}
+
+.empty-content p {
+  font-size: 0.85rem;
+  color: #64748b;
+  margin-bottom: 1.25rem;
+}
+
+.reset-filter-btn {
+  padding: 0.55rem 1.2rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #ffffff;
+  background: #0f766e;
+  border-radius: 10px;
+  box-shadow: 0 4px 12px rgba(15, 118, 110, 0.25);
+  transition: all 0.2s ease;
+}
+
+.reset-filter-btn:hover {
+  background: #0d9488;
+  transform: translateY(-2px);
+}
