@@ -1,0 +1,22 @@
+# Dependencies & Environment
+node_modules/
+venv/
+.venv/
+.env
+*.env
+
+# Build & Cache
+dist/
+build/
+.vite/
+__pycache__/
+*.pyc
+.pytest_cache/
+pytest_output.txt
+
+# Git & IDE
+.git
+.gitignore
+.vscode/
+.idea/
+.DS_Store
