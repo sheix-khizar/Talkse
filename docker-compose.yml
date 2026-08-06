@@ -22,3 +22,17 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
+
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: talkse_ngrok
+    restart: unless-stopped
+    command:
+      - "http"
+      - "backend:8000"
+    ports:
+      - "4040:4040"
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
+    depends_on:
+      - backend
