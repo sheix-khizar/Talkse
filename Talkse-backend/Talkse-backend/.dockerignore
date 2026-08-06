@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.git/
+.gitignore
+pytest_output.txt
+.pytest_cache/
+tests/
+cloudflared
