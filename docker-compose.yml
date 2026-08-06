@@ -33,6 +33,8 @@ services:
       - "backend:8000"
     ports:
       - "4040:4040"
+    env_file:
+      - ./Talkse-backend/Talkse-backend/.env
     environment:
       NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
     depends_on:

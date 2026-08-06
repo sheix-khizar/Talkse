@@ -75,13 +75,7 @@ async def voice(request: Request):
 
     from fastapi.responses import Response
 
-    raw_host = (
-        request.headers.get("x-forwarded-host")
-        or request.headers.get("host")
-        or settings.public_host
-        or "localhost:8000"
-    )
-    public_host = raw_host.split(",")[0].strip()
+    public_host = settings.public_host or request.headers.get("host") or "localhost:8000"
     public_host = public_host.replace("https://", "").replace("http://", "").strip().rstrip("/")
     ws_url = f"wss://{public_host}/ws/signalwire/{call_sid}"
 
