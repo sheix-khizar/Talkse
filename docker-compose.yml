@@ -29,6 +29,7 @@ services:
     restart: unless-stopped
     command:
       - "http"
+      - "--url=https://${PUBLIC_HOST:-feast-pantyhose-shelving.ngrok-free.dev}"
       - "backend:8000"
     ports:
       - "4040:4040"
