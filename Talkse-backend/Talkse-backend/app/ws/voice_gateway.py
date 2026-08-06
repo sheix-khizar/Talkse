@@ -136,8 +136,70 @@ async def voice_ws(websocket: WebSocket, call_id: str):
     transcriber = await _start_transcriber()
     pcm_buffer = bytearray()
 
+    loop = asyncio.get_running_loop()
+    stt_queue = asyncio.Queue()
+
+    if transcriber:
+        def _on_stt_update(text: str, is_final: bool):
+            loop.call_soon_threadsafe(stt_queue.put_nowait, (text, is_final))
+        transcriber.on_transcript_update = _on_stt_update
+
+    speculative_task: asyncio.Task | None = None
+    speculative_text: str | None = None
+
+    async def _run_speculative(text_to_speculate: str, state_copy: dict):
+        try:
+            await asyncio.sleep(0.12)  # brief debounce
+            result = await asyncio.to_thread(handle_turn, text_to_speculate, state_copy)
+            reply_text = result.get("reply_text")
+            audio_bytes = None
+            if reply_text and not result.get("is_faq"):
+                provider = state_copy.get("voice_pipeline", "deepgram")
+                try:
+                    task = asyncio.to_thread(synthesize_for_provider_bytes, provider, reply_text)
+                    audio_bytes, _, _ = await asyncio.wait_for(task, timeout=4.0)
+                except Exception:
+                    audio_bytes = None
+            return {
+                "text": text_to_speculate,
+                "result": result,
+                "state_copy": state_copy,
+                "audio_bytes": audio_bytes,
+            }
+        except asyncio.CancelledError:
+            raise
+        except Exception as err:
+            logger.debug(f"[Speculative STT] Speculative execution failed: {err}")
+            return None
+
+    def _cancel_speculative():
+        nonlocal speculative_task, speculative_text
+        if speculative_task and not speculative_task.done():
+            speculative_task.cancel()
+        speculative_task = None
+        speculative_text = None
+
     try:
         while True:
+            # Drain any pending STT queue events (interims)
+            while not stt_queue.empty():
+                try:
+                    text_update, is_fin = stt_queue.get_nowait()
+                    if text_update:
+                        if not is_fin:
+                            await _emit(websocket, "transcript.partial", {
+                                "role": "customer",
+                                "text": text_update,
+                            })
+                            # Trigger or update speculative task
+                            if text_update != speculative_text:
+                                _cancel_speculative()
+                                speculative_text = text_update
+                                state_copy = dict(state)
+                                speculative_task = asyncio.create_task(_run_speculative(text_update, state_copy))
+                except asyncio.QueueEmpty:
+                    break
+
             msg = await websocket.receive()
             if msg.get("type") == "websocket.disconnect":
                 break
@@ -172,6 +234,23 @@ async def voice_ws(websocket: WebSocket, call_id: str):
             else:
                 transcript = None
 
+            # Process interim events after receiving socket frame
+            while not stt_queue.empty():
+                try:
+                    text_update, is_fin = stt_queue.get_nowait()
+                    if text_update and not is_fin:
+                        await _emit(websocket, "transcript.partial", {
+                            "role": "customer",
+                            "text": text_update,
+                        })
+                        if text_update != speculative_text:
+                            _cancel_speculative()
+                            speculative_text = text_update
+                            state_copy = dict(state)
+                            speculative_task = asyncio.create_task(_run_speculative(text_update, state_copy))
+                except asyncio.QueueEmpty:
+                    break
+
             if transcript:
                 await _emit(websocket, "transcript.final", {
                     "role": "customer",
@@ -182,24 +261,44 @@ async def voice_ws(websocket: WebSocket, call_id: str):
                     state["transcript"] = []
                 state["transcript"].append({"role": "customer", "text": transcript})
 
-                try:
-                    result = await asyncio.wait_for(
-                        asyncio.to_thread(handle_turn, transcript, state),
-                        timeout=10.0
-                    )
-                except asyncio.TimeoutError:
-                    logger.error(f"[handle_turn] Timed out for call {call_id}; transferring to human.")
-                    state["status"] = "transferred_to_human"
-                    result = {
-                        "reply_text": "I'm having trouble processing that — let me transfer you to a team member.",
-                        "llm_time": 10.0, "routed": False, "is_faq": False, "faq_stream": None, "terminal": True
-                    }
-                except Exception as e:
-                    logger.error(f"[Turn Error] handle_turn failed for call {call_id}: {e}")
-                    result = {
-                        "reply_text": "Sorry, I hit a snag processing that. Could you say that again?",
-                        "terminal": False,
-                    }
+                result = None
+                pre_synthesized_audio = None
+
+                # Check if speculative task already calculated this exact turn
+                if speculative_task:
+                    try:
+                        spec_data = await asyncio.wait_for(asyncio.shield(speculative_task), timeout=1.5)
+                        if spec_data and spec_data.get("text") == transcript:
+                            result = spec_data.get("result")
+                            pre_synthesized_audio = spec_data.get("audio_bytes")
+                            if spec_data.get("state_copy"):
+                                state.update(spec_data["state_copy"])
+                            logger.info(f"[Speculative Engine] Reused pre-calculated response for '{transcript}' (Zero-latency hit!)")
+                    except Exception:
+                        pass
+                    finally:
+                        _cancel_speculative()
+
+                if not result:
+                    try:
+                        result = await asyncio.wait_for(
+                            asyncio.to_thread(handle_turn, transcript, state),
+                            timeout=10.0
+                        )
+                    except asyncio.TimeoutError:
+                        logger.error(f"[handle_turn] Timed out for call {call_id}; transferring to human.")
+                        state["status"] = "transferred_to_human"
+                        result = {
+                            "reply_text": "I'm having trouble processing that — let me transfer you to a team member.",
+                            "llm_time": 10.0, "routed": False, "is_faq": False, "faq_stream": None, "terminal": True
+                        }
+                    except Exception as e:
+                        logger.error(f"[Turn Error] handle_turn failed for call {call_id}: {e}")
+                        result = {
+                            "reply_text": "Sorry, I hit a snag processing that. Could you say that again?",
+                            "terminal": False,
+                        }
+
                 _refresh_pipeline(call_id, state)
                 save_session(call_id, state)
 
@@ -246,7 +345,13 @@ async def voice_ws(websocket: WebSocket, call_id: str):
                             "role": "ai",
                             "text": reply_text,
                         })
-                        await _synthesize_and_emit(websocket, call_id, reply_text, state)
+                        if pre_synthesized_audio:
+                            await websocket.send_json({
+                                "type": "audio.chunk",
+                                "data": {"audio_base64": base64.b64encode(pre_synthesized_audio).decode("ascii")},
+                            })
+                        else:
+                            await _synthesize_and_emit(websocket, call_id, reply_text, state)
 
                 latest_session = get_session(call_id) or state
                 await _emit(websocket, "state.changed", {

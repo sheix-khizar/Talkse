@@ -71,6 +71,7 @@ class StreamingTranscriber:
         self._keep_alive_stop = threading.Event()
         self._keep_alive_thread: threading.Thread | None = None
         self._connection_open = False
+        self.on_transcript_update = None  # optional callback: cb(full_text: str, is_final: bool)
 
     def _on_transcript(self, result, **kwargs):
         if self._first_result_time is None:
@@ -95,6 +96,13 @@ class StreamingTranscriber:
             else:
                 if text:
                     self._latest_interim = text
+
+            full_hypothesis = " ".join(self._final_transcript_parts + ([self._latest_interim] if self._latest_interim else [])).strip()
+            if self.on_transcript_update and full_hypothesis:
+                try:
+                    self.on_transcript_update(full_hypothesis, is_final or speech_final)
+                except Exception as cb_err:
+                    logger.warning(f"[Streaming STT Callback Error] {cb_err}")
         except Exception as e:
             logger.warning(f"[Streaming STT Warning] Parse error: {e}")
 
@@ -139,7 +147,7 @@ class StreamingTranscriber:
             channels=1,
             interim_results=True,
             punctuate=True,
-            endpointing=300,
+            endpointing=200,
         )
         self.socket_cm = self.connection
         self.conn = self.socket_cm.__enter__()
@@ -179,6 +187,12 @@ class StreamingTranscriber:
             self.begin_turn()  # reset for next turn
             return transcript
         return None
+
+    def get_current_hypothesis(self) -> tuple[str, bool]:
+        """Returns (current_full_text, is_turn_complete)."""
+        full_text = " ".join(self._final_transcript_parts + ([self._latest_interim] if self._latest_interim else [])).strip()
+        is_complete = getattr(self, "_turn_complete", False)
+        return full_text, is_complete
 
     def end_turn(self) -> tuple[str, float, float, float]:
         """

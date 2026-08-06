@@ -92,18 +92,58 @@ async def signalwire_ws(websocket: WebSocket, call_sid: str):
     })
 
     stream_id = None
-    transcriber = None
+    loop = asyncio.get_running_loop()
+    stt_queue = asyncio.Queue()
 
     try:
         transcriber = await asyncio.to_thread(StreamingTranscriber, sample_rate=SW_SAMPLE_RATE)
+        def _on_stt_update(text: str, is_final: bool):
+            loop.call_soon_threadsafe(stt_queue.put_nowait, (text, is_final))
+        transcriber.on_transcript_update = _on_stt_update
         await asyncio.to_thread(transcriber.start)
         transcriber.begin_turn()
     except Exception as e:
         logger.warning(f"[SignalWire] Streaming STT unavailable: {e}")
         transcriber = None
 
+    speculative_task: asyncio.Task | None = None
+    speculative_text: str | None = None
+
+    async def _run_speculative(text_to_speculate: str, state_copy: dict):
+        try:
+            await asyncio.sleep(0.12)
+            res = await asyncio.to_thread(handle_turn, text_to_speculate, state_copy)
+            return {
+                "text": text_to_speculate,
+                "result": res,
+                "state_copy": state_copy,
+            }
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            return None
+
+    def _cancel_speculative():
+        nonlocal speculative_task, speculative_text
+        if speculative_task and not speculative_task.done():
+            speculative_task.cancel()
+        speculative_task = None
+        speculative_text = None
+
     try:
         while True:
+            while not stt_queue.empty():
+                try:
+                    text_update, is_fin = stt_queue.get_nowait()
+                    if text_update and not is_fin:
+                        await broadcast_emit(call_sid, "transcript.partial", {"role": "customer", "text": text_update})
+                        if text_update != speculative_text:
+                            _cancel_speculative()
+                            speculative_text = text_update
+                            state_copy = dict(state)
+                            speculative_task = asyncio.create_task(_run_speculative(text_update, state_copy))
+                except asyncio.QueueEmpty:
+                    break
             raw = await websocket.receive_text()
             msg = json.loads(raw)
             event = msg.get("event")
@@ -148,22 +188,37 @@ async def signalwire_ws(websocket: WebSocket, call_sid: str):
                     state.setdefault("transcript", []).append({"role": "customer", "text": transcript})
                     await broadcast_emit(call_sid, "transcript.final", {"role": "customer", "text": transcript})
 
-                    try:
-                        result = await asyncio.wait_for(
-                            asyncio.to_thread(handle_turn, transcript, state), timeout=10.0
-                        )
-                    except asyncio.TimeoutError:
-                        logger.error(f"[SignalWire] handle_turn timed out for call {call_sid}")
-                        result = {
-                            "reply_text": "Sorry, that's taking longer than expected — could you repeat that?",
-                            "terminal": False,
-                        }
-                    except Exception as e:
-                        logger.error(f"[SignalWire] handle_turn failed for call {call_sid}: {e}")
-                        result = {
-                            "reply_text": "Sorry, I hit a snag processing that. Could you say that again?",
-                            "terminal": False,
-                        }
+                    result = None
+                    if speculative_task:
+                        try:
+                            spec_data = await asyncio.wait_for(asyncio.shield(speculative_task), timeout=1.5)
+                            if spec_data and spec_data.get("text") == transcript:
+                                result = spec_data.get("result")
+                                if spec_data.get("state_copy"):
+                                    state.update(spec_data["state_copy"])
+                                logger.info(f"[SignalWire Speculative Engine] Reused pre-calculated response for '{transcript}'")
+                        except Exception:
+                            pass
+                        finally:
+                            _cancel_speculative()
+
+                    if not result:
+                        try:
+                            result = await asyncio.wait_for(
+                                asyncio.to_thread(handle_turn, transcript, state), timeout=10.0
+                            )
+                        except asyncio.TimeoutError:
+                            logger.error(f"[SignalWire] handle_turn timed out for call {call_sid}")
+                            result = {
+                                "reply_text": "Sorry, that's taking longer than expected — could you repeat that?",
+                                "terminal": False,
+                            }
+                        except Exception as e:
+                            logger.error(f"[SignalWire] handle_turn failed for call {call_sid}: {e}")
+                            result = {
+                                "reply_text": "Sorry, I hit a snag processing that. Could you say that again?",
+                                "terminal": False,
+                            }
 
                     provider = _refresh_pipeline(call_sid, state)
                     save_session(call_sid, state)
